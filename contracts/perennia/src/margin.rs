@@ -179,7 +179,8 @@ mod tests {
         let strike = eth(3_500);
         let (lo, hi) = price_band(Kind::Call, spot, strike, &p);
         let intr = intrinsic(true, spot, strike);
-        assert_eq!(lo, 0);
+        // The lower edge sits just under intrinsic (0.2% of spot), no longer near zero.
+        assert!(lo < intr && lo > intr * 9 / 10);
         // A long is valued at intrinsic no matter what the mark says.
         assert_eq!(asset_mark(Kind::Call, spot, strike), intr);
         // A short with no mark is valued at intrinsic, never at zero.

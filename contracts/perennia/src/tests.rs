@@ -251,7 +251,7 @@ fn cannot_redeem_more_shares_than_held() {
 fn lp_cannot_redeem_capital_backing_open_risk() {
     let mut h = ready();
     h.deposit("whale.near", 50_000);
-    h.trade("whale.near", "ETH-3500-C", Side::Buy, 40.0, 200.0);
+    h.trade("whale.near", "ETH-3500-C", Side::Buy, 40.0, 12.0);
     // The vault is short 40 ATM calls. Pulling almost everything out must be refused.
     h.as_user("lp.near");
     h.c.lp_request_redeem(U128(90_000 * USDC));
@@ -265,9 +265,9 @@ fn lp_cannot_redeem_capital_backing_open_risk() {
 fn buy_moves_premium_from_trader_to_vault() {
     let mut h = ready();
     let vault_before = h.c.vault_cash;
-    h.trade("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
-    assert_eq!(h.collateral("alice.near"), (10_000 - 200) * USDC as i128);
-    assert_eq!(h.c.vault_cash, vault_before + 200 * USDC as i128);
+    h.trade("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
+    assert_eq!(h.collateral("alice.near"), (10_000 - 12) * USDC as i128);
+    assert_eq!(h.c.vault_cash, vault_before + 12 * USDC as i128);
     let view = h.c.get_account(acct("alice.near")).unwrap();
     assert_eq!(view.positions.len(), 1);
     assert_eq!(view.positions[0].size.0, ONE as i128);
@@ -277,9 +277,9 @@ fn buy_moves_premium_from_trader_to_vault() {
 #[test]
 fn round_trip_costs_the_spread_and_never_favours_the_trader() {
     let mut h = ready();
-    h.trade("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
-    h.trade("alice.near", "ETH-3500-C", Side::Sell, 1.0, 190.0);
-    assert_eq!(h.collateral("alice.near"), (10_000 - 10) * USDC as i128);
+    h.trade("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
+    h.trade("alice.near", "ETH-3500-C", Side::Sell, 1.0, 11.0);
+    assert_eq!(h.collateral("alice.near"), (10_000 - 1) * USDC as i128);
     assert!(h.c.get_account(acct("alice.near")).unwrap().positions.is_empty());
     h.assert_solvent();
 }
@@ -287,10 +287,10 @@ fn round_trip_costs_the_spread_and_never_favours_the_trader() {
 #[test]
 fn rounding_favours_the_vault() {
     let mut h = ready();
-    // 0.001 contract at 123.456789 USDC: exact cost 123456.789 micros.
-    h.trade("alice.near", "ETH-3500-C", Side::Buy, 0.001, 123.456789);
+    // 0.001 contract at 12.345678 USDC: exact cost 12345.678 micros.
+    h.trade("alice.near", "ETH-3500-C", Side::Buy, 0.001, 12.345678);
     let paid = 10_000 * USDC as i128 - h.collateral("alice.near");
-    assert_eq!(paid, 123_457, "buy rounds the premium up");
+    assert_eq!(paid, 12_346, "buy rounds the premium up");
     h.assert_solvent();
 }
 
@@ -298,7 +298,7 @@ fn rounding_favours_the_vault() {
 #[should_panic(expected = "quote is for a different taker")]
 fn quote_cannot_be_used_by_someone_else() {
     let mut h = ready();
-    let (q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
+    let (q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
     h.deposit("mallory.near", 1_000);
     h.as_user("mallory.near");
     h.c.trade(q, sig);
@@ -308,7 +308,7 @@ fn quote_cannot_be_used_by_someone_else() {
 #[should_panic(expected = "quote expired")]
 fn expired_quote_is_rejected() {
     let mut h = ready();
-    let (q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
+    let (q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
     h.advance(6);
     h.as_user("alice.near");
     h.c.trade(q, sig);
@@ -318,7 +318,7 @@ fn expired_quote_is_rejected() {
 #[should_panic(expected = "too far in the future")]
 fn quote_with_long_ttl_is_rejected() {
     let mut h = ready();
-    let (mut q, _) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
+    let (mut q, _) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
     q.expiry_ns = U64(h.now + 600 * SEC);
     let sig = h.sign(&h.agent, QUOTE_DOMAIN, &q);
     h.as_user("alice.near");
@@ -329,7 +329,7 @@ fn quote_with_long_ttl_is_rejected() {
 #[should_panic(expected = "nonce already used")]
 fn replayed_quote_is_rejected() {
     let mut h = ready();
-    let (q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
+    let (q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
     h.as_user("alice.near");
     h.c.trade(q.clone(), sig.clone());
     h.as_user("alice.near");
@@ -341,7 +341,7 @@ fn replayed_quote_is_rejected() {
 fn quote_signed_by_unknown_key_is_rejected() {
     let mut h = ready();
     let rogue = SigningKey::from_bytes(&[9u8; 32]);
-    let (q, _) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
+    let (q, _) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
     let sig = h.sign(&rogue, QUOTE_DOMAIN, &q);
     h.as_user("alice.near");
     h.c.trade(q, sig);
@@ -351,7 +351,7 @@ fn quote_signed_by_unknown_key_is_rejected() {
 #[should_panic(expected = "invalid agent signature")]
 fn tampering_with_a_signed_quote_is_rejected() {
     let mut h = ready();
-    let (mut q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
+    let (mut q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
     q.price = U128(1 * USDC); // cheaper than what the agent signed
     h.as_user("alice.near");
     h.c.trade(q, sig);
@@ -362,7 +362,7 @@ fn tampering_with_a_signed_quote_is_rejected() {
 fn signature_for_another_message_type_is_rejected() {
     let mut h = ready();
     // A valid spot signature must not pass as a quote signature (domain separation).
-    let (q, _) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
+    let (q, _) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
     let sig = h.sign(&h.agent, SPOT_DOMAIN, &q);
     h.as_user("alice.near");
     h.c.trade(q, sig);
@@ -390,14 +390,14 @@ fn free_option_is_rejected_for_an_in_the_money_series() {
 fn stale_spot_blocks_trading() {
     let mut h = ready();
     h.advance(60);
-    h.trade("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
+    h.trade("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
 }
 
 #[test]
 #[should_panic(expected = "unknown series")]
 fn unknown_series_is_rejected() {
     let mut h = ready();
-    h.trade("alice.near", "ETH-9999-C", Side::Buy, 1.0, 200.0);
+    h.trade("alice.near", "ETH-9999-C", Side::Buy, 1.0, 12.0);
 }
 
 #[test]
@@ -405,13 +405,13 @@ fn unknown_series_is_rejected() {
 fn naked_short_without_margin_is_rejected() {
     let mut h = ready();
     h.deposit("bob.near", 100);
-    h.trade("bob.near", "ETH-3500-C", Side::Sell, 5.0, 180.0);
+    h.trade("bob.near", "ETH-3500-C", Side::Sell, 5.0, 11.0);
 }
 
 #[test]
 fn short_with_enough_margin_is_accepted() {
     let mut h = ready();
-    h.trade("alice.near", "ETH-3500-C", Side::Sell, 1.0, 180.0);
+    h.trade("alice.near", "ETH-3500-C", Side::Sell, 1.0, 11.0);
     let view = h.c.get_account(acct("alice.near")).unwrap();
     assert_eq!(view.positions[0].size.0, -(ONE as i128));
     assert!(view.equity.unwrap().0 >= view.requirement.unwrap().0);
@@ -424,13 +424,13 @@ fn vault_refuses_risk_beyond_its_capital() {
     let mut h = ready();
     h.deposit("whale.near", 500_000);
     // The vault holds ~100k USDC; selling it 300 ATM calls needs far more than that.
-    h.trade("whale.near", "ETH-3500-C", Side::Buy, 300.0, 200.0);
+    h.trade("whale.near", "ETH-3500-C", Side::Buy, 300.0, 12.0);
 }
 
 #[test]
 fn closing_trades_are_allowed_while_close_only() {
     let mut h = ready();
-    h.trade("alice.near", "ETH-3500-C", Side::Sell, 1.0, 180.0);
+    h.trade("alice.near", "ETH-3500-C", Side::Sell, 1.0, 11.0);
     // Spot rises until the account is deep in the close-only zone, then it buys back to reduce.
     h.advance(1);
     h.spot(3_800);
@@ -498,19 +498,19 @@ fn future_dated_spot_is_rejected() {
 #[test]
 fn funding_moves_cash_from_longs_to_the_vault_and_conserves_the_ledger() {
     let mut h = ready();
-    h.trade("alice.near", "ETH-3500-C", Side::Buy, 10.0, 200.0);
+    h.trade("alice.near", "ETH-3500-C", Side::Buy, 10.0, 12.0);
     let cash_before = h.collateral("alice.near");
     h.advance(60);
     h.spot(3_500);
-    // 1% per hour on a 200 USDC mark = 2 USDC per contract, so 20 USDC for 10 contracts.
-    h.funding("ETH-3500-C", 10_000_000, 200.0);
+    // 1% per hour on a 12 USDC mark = 0.12 USDC per contract, so 1.2 USDC for 10 contracts.
+    h.funding("ETH-3500-C", 10_000_000, 12.0);
     // Funding is applied on the next touch.
     h.deposit("alice.near", 1);
     h.as_user("alice.near");
     let mut a = h.c.accounts.get(&acct("alice.near")).cloned().unwrap();
     h.c.apply_funding(&mut a);
     h.c.accounts.insert(acct("alice.near"), a);
-    assert_eq!(h.collateral("alice.near"), cash_before + USDC as i128 - 20 * USDC as i128);
+    assert_eq!(h.collateral("alice.near"), cash_before + USDC as i128 - 1_200_000);
     h.assert_solvent();
 }
 
@@ -519,9 +519,9 @@ fn funding_rate_is_clamped_to_the_cap() {
     let mut h = ready();
     h.advance(60);
     h.spot(3_500);
-    h.funding("ETH-3500-C", 900_000_000, 200.0); // 90% asked, 4% cap
+    h.funding("ETH-3500-C", 900_000_000, 12.0); // 90% asked, 4% cap
     let s = h.c.get_series("ETH-3500-C".into()).unwrap();
-    assert_eq!(s.funding_index.0, 8 * USDC as i128); // 4% of 200 USDC
+    assert_eq!(s.funding_index.0, 480_000); // 4% of a 12 USDC mark
 }
 
 #[test]
@@ -530,10 +530,10 @@ fn funding_epoch_cannot_be_replayed() {
     let mut h = ready();
     h.advance(60);
     h.spot(3_500);
-    h.funding("ETH-3500-C", 1_000_000, 200.0);
+    h.funding("ETH-3500-C", 1_000_000, 12.0);
     h.advance(1);
     h.spot(3_500);
-    h.funding("ETH-3500-C", 1_000_000, 200.0);
+    h.funding("ETH-3500-C", 1_000_000, 12.0);
 }
 
 #[test]
@@ -546,7 +546,7 @@ fn funding_for_an_old_epoch_is_rejected() {
         series: "ETH-3500-C".into(),
         epoch: U64(h.now / (3_600 * SEC) - 2),
         rate: I128(1_000_000),
-        mark: U128(200 * USDC),
+        mark: U128(12 * USDC),
     };
     let sig = h.sign(&h.agent, FUNDING_DOMAIN, &u);
     testing_env!(ctx("keeper.near", h.now));
@@ -570,7 +570,7 @@ fn short_then_squeeze() -> Harness {
     let mut h = ready();
     h.deposit("bob.near", 1_700);
     // Margin: ~910 requirement per short ATM call, 1.5x initial ratio, so one call fits.
-    h.trade("bob.near", "ETH-3500-C", Side::Sell, 1.0, 180.0);
+    h.trade("bob.near", "ETH-3500-C", Side::Sell, 1.0, 11.0);
     h
 }
 
@@ -686,7 +686,7 @@ fn cannot_withdraw_more_than_the_balance() {
 #[should_panic(expected = "under-margined")]
 fn cannot_withdraw_the_margin_behind_an_open_short() {
     let mut h = ready();
-    h.trade("alice.near", "ETH-3500-C", Side::Sell, 1.0, 180.0);
+    h.trade("alice.near", "ETH-3500-C", Side::Sell, 1.0, 11.0);
     h.as_user("alice.near");
     let _ = h.c.withdraw(U128(9_500 * USDC));
 }
@@ -782,7 +782,7 @@ fn revoking_agent_keys_blocks_quotes() {
     let mut h = ready();
     h.as_user("owner.near");
     h.c.set_agent_keys(vec![]);
-    let (q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
+    let (q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
     h.as_user("alice.near");
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.c.trade(q, sig)));
     assert!(r.is_err());
@@ -796,7 +796,7 @@ fn pause_blocks_trading_but_not_withdrawals_or_liquidation() {
     h.as_user("alice.near");
     let _ = h.c.withdraw(U128(USDC));
     assert!(h.c.is_paused());
-    let (q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 200.0);
+    let (q, sig) = h.quote("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
     h.as_user("alice.near");
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| h.c.trade(q, sig)));
     assert!(r.is_err());
@@ -907,14 +907,14 @@ fn ledger_invariant_holds_over_a_random_operation_mix() {
                 let size = 0.1 + ((r >> 20) % 40) as f64 / 10.0;
                 let strike = if s.contains("4000") { 4_000 } else { 3_500 };
                 let intr = if s.ends_with('C') { (spot_price - strike).max(0) } else { (strike - spot_price).max(0) };
-                let price = intr as f64 + 40.0 + ((r >> 24) % 120) as f64;
+                let price = intr as f64 + 1.0 + ((r >> 24) % 25) as f64;
                 h.trade(who, s, side, size, price);
             }
             4 => {
                 let s = SERIES_IDS[(r >> 8) as usize % 3];
                 let strike = if s.contains("4000") { 4_000 } else { 3_500 };
                 let intr = if s.ends_with('C') { (spot_price - strike).max(0) } else { (strike - spot_price).max(0) };
-                h.funding(s, ((r >> 12) % 20_000_000) as i128 - 10_000_000, intr as f64 + 100.0);
+                h.funding(s, ((r >> 12) % 20_000_000) as i128 - 10_000_000, intr as f64 + 10.0);
             }
             5 => {
                 let who = users[(r >> 8) as usize % 3];

@@ -129,7 +129,9 @@ pub struct Params {
     pub liquidation_ratio_bps: u32,
     /// The vault must keep equity / vault requirement at or above this.
     pub vault_ratio_bps: u32,
-    /// Quote price must not exceed intrinsic plus this share of spot (bps).
+    /// Quote price must not exceed intrinsic plus this share of spot (bps). Real everlasting
+    /// time value is about 0.35% of spot at 60% vol and about 0.9% at 150% vol (hourly funding
+    /// period), so 150 leaves room for extreme volatility without inviting mispricing.
     pub max_time_value_bps: u32,
     /// Quote price must not fall below intrinsic minus this share of spot (bps).
     pub min_time_value_bps: u32,
@@ -159,9 +161,9 @@ impl Default for Params {
             close_only_ratio_bps: 13_000,
             liquidation_ratio_bps: 11_500,
             vault_ratio_bps: 12_000,
-            max_time_value_bps: 3_000,
-            min_time_value_bps: 500,
-            tv_reserve_bps: 600,
+            max_time_value_bps: 150,
+            min_time_value_bps: 20,
+            tv_reserve_bps: 100,
             min_margin_per_contract: 5_000_000,
             max_spot_jump_bps: 1_000,
         }

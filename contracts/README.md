@@ -71,7 +71,7 @@ The JSON API takes 64 and 128-bit numbers as strings (`U128`, `U64`, `I128`).
 
 ## Known limitations (read before demoing)
 
-1. **The agent key is trusted within the band.** A compromised key colluding with a trader could buy options near the lower band edge until the vault risk limit stops it. The band and the vault limit cap the damage but do not remove it. Mitigations to add: a tighter band around the last attested mark, a per-epoch loss cap for the vault, and key rotation (`set_agent_keys`) as the emergency response.
+1. **The agent key is trusted within the band.** The band is intrinsic value minus 0.2% of spot up to intrinsic plus 1.5% of spot (about $52 on ETH at 3,500, against a real ATM price near $12). A compromised key colluding with a trader could still trade at the favourable edge until the vault risk limit stops it. The band and the vault limit cap the damage but do not remove it. Mitigations still to add: a band around the last attested mark, a per-epoch loss cap for the vault, and key rotation (`set_agent_keys`) as the emergency response.
 2. **Spot is agent-signed in v1.** The earlier plan had a permissionless oracle poke. A Pyth cross-check is the right upgrade; it was left out because the call shape could not be verified offline.
 3. **Funding rate and mark come from the agent**, clamped to 4% per hour and to the price band.
 4. **Marks go stale between hourly funding updates.** Longs are valued at intrinsic only and shorts never below intrinsic, which keeps equity conservative, but LP share prices can lag fast moves in time value.
