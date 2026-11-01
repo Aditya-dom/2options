@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Perennia NEAR Board</title>
+<style>
+/* Layout: GitHub Projects-style table, grouped by parent issue with sub-issue rows.
+   Dark-first palette with a cool blue-grey bias; status colors are semantic, separate from the accent. */
+:root {
+  --bg: #0d1117;
+  --surface: #151b23;
+  --surface-2: #1c232d;
+  --line: #2a323d;
+  --fg: #e6edf3;
+  --muted: #8b96a3;
+  --accent: #4493f8;
+  --sel: #1f6feb;
+  --open: #3fb950;
+  --done: #ab7df8;
+  --todo-bg: #2a323d; --todo-fg: #c0c9d4;
+  --prog-bg: #3a2d10; --prog-fg: #e3b341; --prog-line: #6b5314;
+  --done-bg: #2c2147; --done-fg: #c2a3ff; --done-line: #5a3fa0;
+  --block-bg: #3d1a1d; --block-fg: #ff8e8e; --block-line: #7a2a30;
+  --av-a: #1f6feb; --av-b: #bf5af2;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --bg: #ffffff; --surface: #f6f8fa; --surface-2: #eef1f4; --line: #d1d9e0;
+    --fg: #1f2328; --muted: #59636e; --accent: #0969da; --sel: #0969da;
+    --open: #1a7f37; --done: #8250df;
+    --todo-bg: #eaeef2; --todo-fg: #424a53;
+    --prog-bg: #fff8c5; --prog-fg: #7d4e00; --prog-line: #d4a72c;
+    --done-bg: #fbefff; --done-fg: #6e40c9; --done-line: #c297ff;
+    --block-bg: #ffebe9; --block-fg: #cf222e; --block-line: #ff8182;
+    color-scheme: light;
+  }
+}
+:root[data-theme="light"] {
+  --bg: #ffffff; --surface: #f6f8fa; --surface-2: #eef1f4; --line: #d1d9e0;
+  --fg: #1f2328; --muted: #59636e; --accent: #0969da; --sel: #0969da;
+  --open: #1a7f37; --done: #8250df;
+  --todo-bg: #eaeef2; --todo-fg: #424a53;
+  --prog-bg: #fff8c5; --prog-fg: #7d4e00; --prog-line: #d4a72c;
+  --done-bg: #fbefff; --done-fg: #6e40c9; --done-line: #c297ff;
+  --block-bg: #ffebe9; --block-fg: #cf222e; --block-line: #ff8182;
+  color-scheme: light;
+}
+:root { color-scheme: dark; }
+@media (prefers-color-scheme: light) { :root:not([data-theme="dark"]) { color-scheme: light; } }
+:root[data-theme="light"] { color-scheme: light; }
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 20px 40px;
+}
+.wrap { max-width: 1180px; margin: 0 auto; }
+
+.top { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+.top h1 { margin: 0; font-size: 22px; font-weight: 600; display: flex; align-items: center; gap: 8px; text-wrap: balance; }
+.top h1 svg { color: var(--muted); }
+.sub { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+.chip {
+  border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  border-radius: 999px; padding: 3px 12px; font-size: 12px; white-space: nowrap;
+}
+
+.load { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0 14px; }
+.load > div { border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 10px 14px; min-width: 0; }
+.load .who { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.load .nums { color: var(--muted); font-size: 12px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.bar { height: 6px; border-radius: 3px; background: var(--surface-2); margin-top: 8px; overflow: hidden; }
+.bar > i { display: block; height: 100%; background: var(--done); }
+
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.tab {
+  background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted);
+  padding: 8px 14px; font: inherit; cursor: pointer; white-space: nowrap; display: flex; align-items: center; gap: 6px;
+}
+.tab:hover { color: var(--fg); }
+.tab[aria-selected="true"] { color: var(--fg); border-bottom-color: #f78166; font-weight: 600; }
+.tab .n { background: var(--surface-2); border-radius: 999px; padding: 0 7px; font-size: 12px; font-variant-numeric: tabular-nums; }
+
+.filter {
+  display: flex; align-items: center; gap: 8px; margin: 12px 0;
+  border: 1px solid var(--line); border-radius: 6px; padding: 0 12px; background: var(--bg);
+}
+.filter:focus-within { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.filter svg { color: var(--muted); flex: none; }
+.filter input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: var(--fg); font: inherit; padding: 8px 0; }
+
+.table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; }
+table { border-collapse: collapse; width: 100%; min-width: 820px; }
+th {
+  text-align: left; font-weight: 600; color: var(--muted); font-size: 13px; padding: 8px 12px;
+  background: var(--surface); border-bottom: 1px solid var(--line); white-space: nowrap;
+}
+td { padding: 0 12px; height: 38px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+tr:last-child td { border-bottom: 0; }
+tr.row:hover td { background: var(--surface); }
+td.rn, th.rn { width: 48px; text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; padding-right: 8px; }
+td.title { min-width: 360px; }
+td.who { width: 190px; } td.stat { width: 170px; } td.date { width: 100px; color: var(--muted); white-space: nowrap; } td.prog { width: 130px; }
+
+.t { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.t .txt { min-width: 0; overflow-wrap: anywhere; }
+.t .num { color: var(--muted); font-family: var(--mono); font-size: 12px; flex: none; }
+.epic .txt { font-weight: 600; }
+.sub-row .t { padding-left: 34px; }
+.chev {
+  width: 20px; height: 20px; flex: none; display: grid; place-items: center; border: 0; background: none;
+  color: var(--muted); border-radius: 4px; cursor: pointer; padding: 0;
+}
+.chev:hover { background: var(--surface-2); color: var(--fg); }
+.chev svg { transition: transform .12s; }
+.chev[aria-expanded="true"] svg { transform: rotate(90deg); }
+.ico { flex: none; display: block; }
+.ico.open { color: var(--open); } .ico.done { color: var(--done); }
+.tag { font-size: 11px; border: 1px solid var(--line); color: var(--muted); border-radius: 999px; padding: 0 8px; flex: none; }
+
+.av { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; font-weight: 600; color: #fff; flex: none; }
+.av.gaurav { background: var(--av-a); } .av.aditya { background: var(--av-b); }
+.av.pair { display: inline-flex; width: auto; background: none; }
+.av.pair .av + .av { margin-left: -6px; box-shadow: -2px 0 0 var(--bg); }
+.pick { display: flex; align-items: center; gap: 8px; }
+select {
+  font: inherit; color: var(--fg); background: transparent; border: 1px solid transparent; border-radius: 6px;
+  padding: 3px 4px; cursor: pointer; min-width: 0; max-width: 100%;
+}
+select:hover { border-color: var(--line); background: var(--surface-2); }
+select:focus-visible, .tab:focus-visible, .chev:focus-visible, .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+select option { background: var(--surface); color: var(--fg); }
+.pill select { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 8px; border: 1px solid; appearance: none; -webkit-appearance: none; }
+.pill.todo select { background: var(--todo-bg); color: var(--todo-fg); border-color: var(--line); }
+.pill.prog select { background: var(--prog-bg); color: var(--prog-fg); border-color: var(--prog-line); }
+.pill.done select { background: var(--done-bg); color: var(--done-fg); border-color: var(--done-line); }
+.pill.block select { background: var(--block-bg); color: var(--block-fg); border-color: var(--block-line); }
+.derived { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 10px; border: 1px solid; display: inline-block; }
+.derived.todo { background: var(--todo-bg); color: var(--todo-fg); border-color: var(--line); }
+.derived.prog { background: var(--prog-bg); color: var(--prog-fg); border-color: var(--prog-line); }
+.derived.done { background: var(--done-bg); color: var(--done-fg); border-color: var(--done-line); }
+.mini { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.mini .bar { width: 56px; margin: 0; flex: none; }
+
+.empty { padding: 28px; text-align: center; color: var(--muted); }
+.foot { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 12px; color: var(--muted); font-size: 12px; }
+.note { margin-top: 10px; padding: 8px 12px; border: 1px solid var(--prog-line); background: var(--prog-bg); color: var(--prog-fg); border-radius: 6px; font-size: 12px; }
+.btn { font: inherit; font-size: 12px; color: var(--fg); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+.btn:hover { background: var(--surface-2); }
+[hidden] { display: none !important; }
+@media (max-width: 640px) { .load { grid-template-columns: 1fr; } }
+@media (prefers-reduced-motion: reduce) { .chev svg { transition: none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <h1>
+        <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M1.75 0h12.5C15.216 0 16 .784 16 1.75v12.5A1.75 1.75 0 0 1 14.25 16H1.75A1.75 1.75 0 0 1 0 14.25V1.75C0 .784.784 0 1.75 0ZM1.5 1.75v12.5c0 .138.112.25.25.25H5.5v-13H1.75a.25.25 0 0 0-.25.25ZM7 14.5h7.25a.25.25 0 0 0 .25-.25V8H7Zm7.5-8V1.75a.25.25 0 0 0-.25-.25H7v5Z"/></svg>
+        Perennia on NEAR
+      </h1>
+      <p class="sub">NEAR Hackathon build board, Nov 1 to Nov 14. Submission closes Nov 14, 23:59 UTC.</p>
+    </div>
+    <span class="chip" id="countdown"></span>
+  </div>
+
+  <div class="load" id="load"></div>
+
+  <div class="tabs" role="tablist" id="tabs"></div>
+
+  <label class="filter">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/></svg>
+    <input id="q" type="search" placeholder="Filter by keyword, #number or status" autocomplete="off">
+  </label>
+
+  <div class="table-scroll">
+    <table>
+      <thead><tr>
+        <th class="rn"></th><th>Title</th><th>Assignees</th><th>Status</th><th>Target</th><th>Sub-issues</th>
+      </tr></thead>
+      <tbody id="body"></tbody>
+    </table>
+  </div>
+  <div id="note" class="note" hidden></div>
+  <div class="foot">
+    <span>Changes are saved in this browser only. Export the JSON to share your current state with Aditya.</span>
+    <span><button class="btn" id="export">Export JSON</button> <button class="btn" id="reset">Reset</button></span>
+  </div>
+</div>
+
+<script>
+var PEOPLE = { gaurav: "Gaurav", aditya: "Aditya", both: "Both" };
+var STATUS = { todo: "Todo", prog: "In Progress", block: "Blocked", done: "Done" };
+
+// Parent issues (epics) with their sub-issues. Statuses and assignees here are the defaults;
+// anything changed on the page is stored in the shared db and layered on top.
+var EPICS = [
+  { id: 1, title: "Prep: accounts, sandboxes, spec", who: "both", date: "Oct 24 to Oct 31", kids: [
+    { id: 9,  t: "Write the hackathon plan (NEAR_HACKATHON_PLAN.md)", who: "gaurav", s: "done", d: "Oct 24" },
+    { id: 2,  t: "Ask organizers if the Perennia pricing math can be reused", who: "gaurav", s: "todo", d: "Oct 26" },
+    { id: 3,  t: "Create NEAR testnet accounts and fund them from the faucet", who: "aditya", s: "todo", d: "Oct 27" },
+    { id: 4,  t: "Decide fixed-point scheme: USDC 6 decimals, prices 1e8", who: "gaurav", s: "todo", d: "Oct 28" },
+    { id: 5,  t: "Run the Shade Agent quickstart on Phala", who: "aditya", s: "todo", d: "Oct 30" },
+    { id: 6,  t: "Get a test quote from the 1Click API sandbox", who: "aditya", s: "todo", d: "Oct 30" },
+    { id: 7,  t: "Write the contract interface spec: methods, storage, events", who: "gaurav", s: "todo", d: "Oct 30" },
+    { id: 8,  t: "Storyboard the 3-minute demo video", who: "both", s: "todo", d: "Oct 31" }
+  ]},
+  { id: 10, title: "Contract: vault, options, margin", who: "gaurav", date: "Nov 1 to Nov 8", kids: [
+    { id: 11, t: "Scaffold perennia contract with near-sdk, CI and near-workspaces", who: "gaurav", s: "todo", d: "Nov 1" },
+    { id: 12, t: "Vault: ft_on_transfer deposits, withdraw, pUSDC LP shares", who: "gaurav", s: "todo", d: "Nov 2" },
+    { id: 13, t: "Agent key registry and trade() with ed25519 quote verification", who: "gaurav", s: "todo", d: "Nov 3" },
+    { id: 14, t: "Mint NEP-245 option tokens, one id per series", who: "gaurav", s: "todo", d: "Nov 3" },
+    { id: 15, t: "Margin check on trade and withdraw (max 16 positions per account)", who: "gaurav", s: "todo", d: "Nov 5" },
+    { id: 16, t: "Funding index and settle_funding with keeper reward", who: "gaurav", s: "todo", d: "Nov 5" },
+    { id: 17, t: "liquidate() with insurance fund and LP loss sharing", who: "gaurav", s: "todo", d: "Nov 6" },
+    { id: 18, t: "Contract integration tests and testnet deploy", who: "gaurav", s: "todo", d: "Nov 8" }
+  ]},
+  { id: 19, title: "Agent: pricing, quotes, keeper", who: "gaurav", date: "Nov 4 to Nov 8", kids: [
+    { id: 20, t: "Port everlasting pricing and vol surface (disclose prior work)", who: "gaurav", s: "todo", d: "Nov 4" },
+    { id: 21, t: "RFQ server: ed25519-signed quotes with 10s expiry", who: "gaurav", s: "todo", d: "Nov 5" },
+    { id: 22, t: "Spot price feed from Pyth or a public price API", who: "aditya", s: "todo", d: "Nov 5" },
+    { id: 23, t: "Keeper: hourly funding update and liquidation scan", who: "gaurav", s: "todo", d: "Nov 7" },
+    { id: 24, t: "Track inventory and net delta from contract events", who: "aditya", s: "todo", d: "Nov 8" }
+  ]},
+  { id: 25, title: "Frontend on NEAR", who: "aditya", date: "Nov 1 to Nov 10", kids: [
+    { id: 26, t: "New Vite + React app with NEAR Wallet Selector login", who: "aditya", s: "todo", d: "Nov 2" },
+    { id: 27, t: "Contract view hooks: account, margin, series", who: "aditya", s: "todo", d: "Nov 4" },
+    { id: 28, t: "Option chain and order panel wired to RFQ and trade()", who: "aditya", s: "todo", d: "Nov 6" },
+    { id: 29, t: "Positions and funding panels", who: "aditya", s: "todo", d: "Nov 7" },
+    { id: 30, t: "LP vault page: deposit, withdraw, share price, net delta", who: "aditya", s: "todo", d: "Nov 8" },
+    { id: 31, t: "Payoff chart and strategy builder", who: "aditya", s: "todo", d: "Nov 9" }
+  ]},
+  { id: 32, title: "Integrations: Intents and Shade Agent", who: "aditya", date: "Nov 8 to Nov 11", kids: [
+    { id: 33, t: "Deposit from any chain widget using 1Click", who: "aditya", s: "todo", d: "Nov 9" },
+    { id: 34, t: "Deploy the agent as a Shade Agent inside a TEE", who: "gaurav", s: "todo", d: "Nov 10" },
+    { id: 35, t: "Attestation badge in the UI (code hash, TEE quote)", who: "aditya", s: "todo", d: "Nov 10" },
+    { id: 36, t: "Function Call Key for an auto-roll vault agent", who: "gaurav", s: "todo", d: "Nov 11", tag: "should-ship" }
+  ]},
+  { id: 37, title: "Stretch: pick one, cut the other", who: "both", date: "Nov 11 to Nov 12", kids: [
+    { id: 38, t: "Hedge on Hyperliquid testnet through Chain Signatures", who: "gaurav", s: "todo", d: "Nov 12", tag: "stretch" },
+    { id: 39, t: "AI strategy copilot on NEAR AI Cloud", who: "aditya", s: "todo", d: "Nov 12", tag: "stretch" }
+  ]},
+  { id: 40, title: "Ship: docs, demo, submission", who: "both", date: "Nov 13 to Nov 14", kids: [
+    { id: 41, t: "README with architecture diagrams and threat model", who: "gaurav", s: "todo", d: "Nov 13" },
+    { id: 42, t: "One-command setup and green CI", who: "aditya", s: "todo", d: "Nov 13" },
+    { id: 43, t: "Record the demo video", who: "both", s: "todo", d: "Nov 13" },
+    { id: 44, t: "Post on X: built at NEAR HACKATHON, with video", who: "aditya", s: "todo", d: "Nov 14" },
+    { id: 45, t: "Submit the form before 23:59 UTC", who: "gaurav", s: "todo", d: "Nov 14" }
+  ]}
+];
+
+var KEY = "perennia-near-board-v1";
+var state = { view: "all", q: "", open: {}, over: {}, canWrite: true };
+try { state.over = JSON.parse(localStorage.getItem(KEY) || "{}") || {}; } catch (e) { state.over = {}; }
+EPICS.forEach(function (e) { state.open[e.id] = true; });
+
+// Effective values: shared overrides win over defaults.
+function eff(k) {
+  var o = state.over[k.id] || {};
+  return { who: o.assignee || k.who, s: o.status || k.s };
+}
+function epicStatus(e) {
+  var ss = e.kids.map(function (k) { return eff(k).s; });
+  if (ss.every(function (s) { return s === "done"; })) return "done";
+  if (ss.some(function (s) { return s === "prog" || s === "done" || s === "block"; })) return "prog";
+  return "todo";
+}
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+
+function av(who) {
+  if (who === "both") return '<span class="av pair"><span class="av gaurav">G</span><span class="av aditya">A</span></span>';
+  return '<span class="av ' + who + '">' + (who === "gaurav" ? "G" : "A") + "</span>";
+}
+function icon(done) {
+  return done
+    ? '<svg class="ico done" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-label="Closed"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Zm9.78-2.22-5.5 5.5a.749.749 0 0 1-1.06 0l-2.5-2.5a.751.751 0 0 1 1.042-1.018l1.968 1.969 4.97-4.97a.751.751 0 0 1 1.042.018.751.751 0 0 1 .018 1.042Z"/></svg>'
+    : '<svg class="ico open" width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-label="Open"><path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"/></svg>';
+}
+function whoSelect(id, who) {
+  var opts = Object.keys(PEOPLE).map(function (k) {
+    return '<option value="' + k + '"' + (k === who ? " selected" : "") + ">" + PEOPLE[k] + "</option>";
+  }).join("");
+  return '<div class="pick">' + av(who) + '<select data-id="' + id + '" data-f="assignee" aria-label="Assignee for issue ' + id + '"' + (state.canWrite ? "" : " disabled") + ">" + opts + "</select></div>";
+}
+function statusSelect(id, s) {
+  var opts = Object.keys(STATUS).map(function (k) {
+    return '<option value="' + k + '"' + (k === s ? " selected" : "") + ">" + STATUS[k] + "</option>";
+  }).join("");
+  return '<span class="pill ' + s + '"><select data-id="' + id + '" data-f="status" aria-label="Status for issue ' + id + '"' + (state.canWrite ? "" : " disabled") + ">" + opts + "</select></span>";
+}
+
+function matches(text, k, e) {
+  var q = state.q.trim().toLowerCase();
+  if (state.view !== "all") {
+    var w = eff(k).who;
+    if (w !== state.view && w !== "both") return false;
+  }
+  if (!q) return true;
+  var hay = (text + " #" + k.id + " " + STATUS[eff(k).s] + " " + PEOPLE[eff(k).who]).toLowerCase();
+  return hay.indexOf(q.replace(/^#/, "#")) !== -1;
+}
+
+function renderLoad() {
+  var all = [];
+  EPICS.forEach(function (e) { e.kids.forEach(function (k) { all.push(eff(k)); }); });
+  function card(key, label) {
+    var mine = all.filter(function (x) { return x.who === key; });
+    var done = mine.filter(function (x) { return x.s === "done"; }).length;
+    var pct = mine.length ? Math.round(done / mine.length * 100) : 0;
+    return '<div><div class="who">' + av(key) + label + '</div><div class="nums">' + mine.length + " issues · " + done + ' done</div><div class="bar"><i style="width:' + pct + '%"></i></div></div>';
+  }
+  document.getElementById("load").innerHTML = card("gaurav", "Gaurav") + card("aditya", "Aditya") + card("both", "Together");
+}
+
+function renderTabs() {
+  var count = function (v) {
+    var n = 0;
+    EPICS.forEach(function (e) { e.kids.forEach(function (k) { var w = eff(k).who; if (v === "all" || w === v || w === "both") n++; }); });
+    return n;
+  };
+  var defs = [["all", "All work"], ["gaurav", "Gaurav"], ["aditya", "Aditya"]];
+  document.getElementById("tabs").innerHTML = defs.map(function (d) {
+    return '<button class="tab" role="tab" data-view="' + d[0] + '" aria-selected="' + (state.view === d[0]) + '">' + d[1] + ' <span class="n">' + count(d[0]) + "</span></button>";
+  }).join("");
+}
+
+function renderBody() {
+  var rows = "", shown = 0, n = 0;
+  EPICS.forEach(function (e) {
+    n++;
+    var kids = e.kids.filter(function (k) { return matches(k.t, k, e); });
+    var epicHit = state.q.trim() && (e.title + " #" + e.id).toLowerCase().indexOf(state.q.trim().toLowerCase()) !== -1 && state.view === "all";
+    if (!kids.length && !epicHit) return;
+    var list = kids.length ? kids : e.kids;
+    var st = epicStatus(e);
+    var doneN = e.kids.filter(function (k) { return eff(k).s === "done"; }).length;
+    var pct = Math.round(doneN / e.kids.length * 100);
+    var isOpen = state.open[e.id] || !!state.q.trim();
+    rows += '<tr class="row epic"><td class="rn">' + (++shown) + '</td>' +
+      '<td class="title"><div class="t"><button class="chev" data-toggle="' + e.id + '" aria-expanded="' + isOpen + '" aria-label="Toggle sub-issues of ' + esc(e.title) + '"><svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M6.22 3.22a.75.75 0 0 1 1.06 0l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.751.751 0 0 1-1.042-.018.751.751 0 0 1-.018-1.042L9.94 8 6.22 4.28a.75.75 0 0 1 0-1.06Z"/></svg></button>' +
+      icon(st === "done") + '<span class="txt">' + esc(e.title) + '</span><span class="num">#' + e.id + "</span></div></td>" +
+      '<td class="who"><div class="pick">' + av(e.who) + '<span>' + PEOPLE[e.who] + "</span></div></td>" +
+      '<td class="stat"><span class="derived ' + st + '">' + STATUS[st] + "</span></td>" +
+      '<td class="date">' + esc(e.date) + "</td>" +
+      '<td class="prog"><div class="mini"><span class="bar"><i style="width:' + pct + '%"></i></span>' + doneN + "/" + e.kids.length + "</div></td></tr>";
+    if (isOpen) {
+      list.forEach(function (k) {
+        var v = eff(k);
+        rows += '<tr class="row sub-row"><td class="rn">' + (++shown) + '</td>' +
+          '<td class="title"><div class="t">' + icon(v.s === "done") + '<span class="txt">' + esc(k.t) + '</span><span class="num">#' + k.id + "</span>" +
+          (k.tag ? '<span class="tag">' + esc(k.tag) + "</span>" : "") + "</div></td>" +
+          '<td class="who">' + whoSelect(k.id, v.who) + "</td>" +
+          '<td class="stat">' + statusSelect(k.id, v.s) + "</td>" +
+          '<td class="date">' + esc(k.d) + "</td><td></td></tr>";
+      });
+    }
+  });
+  document.getElementById("body").innerHTML = rows || '<tr><td colspan="6" class="empty">No issues match this filter.</td></tr>';
+}
+
+function renderAll() { renderLoad(); renderTabs(); renderBody(); }
+
+function countdown() {
+  var end = Date.UTC(2026, 10, 14, 23, 59), start = Date.UTC(2026, 10, 1);
+  var now = Date.now(), el = document.getElementById("countdown");
+  if (now < start) el.textContent = Math.ceil((start - now) / 864e5) + " days until the build starts";
+  else if (now < end) el.textContent = Math.ceil((end - now) / 864e5) + " days to the deadline";
+  else el.textContent = "Submissions closed";
+}
+
+function setNote(msg) {
+  var n = document.getElementById("note");
+  n.hidden = !msg; n.textContent = msg || "";
+}
+
+function persist() {
+  try { localStorage.setItem(KEY, JSON.stringify(state.over)); setNote(""); }
+  catch (e) { setNote("This browser blocked local storage, so changes will be lost on reload. Use Export to keep them."); }
+}
+function save(id, field, value) {
+  var base = EPICS.reduce(function (f, e) { return f || e.kids.filter(function (k) { return k.id === id; })[0]; }, null);
+  var cur = eff(base);
+  var next = { assignee: cur.who, status: cur.s };
+  next[field] = value;
+  state.over[id] = next;
+  persist();
+  renderAll();
+}
+function exportJson() {
+  var out = [];
+  EPICS.forEach(function (e) { e.kids.forEach(function (k) { var v = eff(k); out.push({ id: k.id, epic: e.title, title: k.t, assignee: PEOPLE[v.who], status: STATUS[v.s], target: k.d }); }); });
+  var blob = new Blob([JSON.stringify(out, null, 2)], { type: "application/json" });
+  var a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "perennia-near-board.json"; a.click();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+}
+function resetBoard() {
+  if (!state.confirmReset) { state.confirmReset = true; document.getElementById("reset").textContent = "Click again to reset"; setTimeout(function () { state.confirmReset = false; document.getElementById("reset").textContent = "Reset"; }, 3000); return; }
+  state.over = {}; state.confirmReset = false; persist(); renderAll(); document.getElementById("reset").textContent = "Reset";
+}
+
+document.addEventListener("click", function (e) {
+  var t = e.target.closest("[data-view],[data-toggle]");
+  if (!t) return;
+  if (t.dataset.view) { state.view = t.dataset.view; renderAll(); }
+  else { var id = t.dataset.toggle; state.open[id] = !state.open[id]; renderBody(); }
+});
+document.addEventListener("change", function (e) {
+  var s = e.target.closest("select[data-id]");
+  if (s) save(Number(s.dataset.id), s.dataset.f, s.value);
+});
+document.getElementById("q").addEventListener("input", function (e) { state.q = e.target.value; renderBody(); });
+
+renderAll();
+countdown();
+
+document.getElementById("export").addEventListener("click", exportJson);
+document.getElementById("reset").addEventListener("click", resetBoard);
+setNote("");
+</script>
+</body>
+</html>
