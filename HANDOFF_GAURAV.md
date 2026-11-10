@@ -133,7 +133,7 @@ Live ETH is about $2,110 (Nov 10), not the $3,500 in the handoff. Strikes should
 
 ## 6. Eligibility, before we submit
 
-- **#2 (can we reuse the pricing math?):** you closed the issue on Oct 24 with no comment. The board still shows Todo because my board-setup script reset its status two minutes later; sorry about that. Did the organizers answer? Please put their answer in the issue. Either way we need disclosure wording: `app/src/lib/pricing.ts` and `agent/perennia_agent/greeks.py` are ports of `core/everlasting.py`.
+- **#2 (can we reuse the pricing math?):** you closed the issue on Oct 24 with no comment. My board-setup script reset its status to Todo two minutes later; I've set it back to Done to match. Did the organizers answer? Please put their answer in the issue. Either way we need disclosure wording: `app/src/lib/pricing.ts` and `agent/perennia_agent/greeks.py` are ports of `core/everlasting.py`.
 - **This repo's history starts Oct 23 with the whole Solana project** (201 files). The plan says to submit from a fresh public repo created on Nov 1, without the old history, because judges read the git log. When do we move, and what goes in? `contracts/`, `app/`, `agent/`, the plan and spec docs, and your quoter and keeper.
 - **#4 (fixed-point scheme) can be marked Done.** The contract settled it: USDC 1e6, prices 1e8, funding 1e9.
 - **The old `ci` workflow shows "cancelled" on every run, including on `main`.** Its two macOS jobs stop within a second of starting, most likely because macOS runners aren't available on this private repo's plan; the Ubuntu jobs pass. It only builds the Solana-era `perennia_math` wheel, so I'd drop it, or its macOS matrix, rather than ship a red check. It's your repo setting, so I left it alone.
