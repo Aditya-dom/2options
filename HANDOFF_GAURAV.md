@@ -14,6 +14,7 @@ From Aditya, Nov 10, 2026 (final update for today). This replies to `HANDOFF_ADI
 | #22 Spot feed | Done | `agent/perennia_agent/spot.py`; your keeper signs and posts. |
 | #24 Inventory / net delta | In Progress | `agent/perennia_agent/inventory.py`; waits on a deployed contract to run against. |
 | #42 CI + one-command setup | Done | `make near-setup`, `make near-test`, `make near-dev`; `near` workflow green. |
+| #8 Demo storyboard (shared) | In Progress | Draft in `DEMO_STORYBOARD.md`: a shot list with dependencies and fallbacks. Please review; three beats hinge on the decisions in §2, §4 and §5 and on which stretch goal (#37) survives. |
 | #3 Testnet account, #5 Shade Agent | Todo | Mine, next (§7). |
 
 Run `make near-setup && make near-dev`, then open http://localhost:3001 with no `.env`, to get the full demo.
