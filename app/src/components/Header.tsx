@@ -7,9 +7,10 @@ import { useTheme } from '../theme';
 import { fmtDuration, useFundingCountdown } from './FundingPanel';
 import { Badge } from './ui';
 
-export type Tab = 'trade' | 'vault' | 'funding';
+export type Tab = 'trade' | 'strategy' | 'vault' | 'funding';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'trade', label: 'TRADE' },
+  { id: 'strategy', label: 'STRATEGY' },
   { id: 'vault', label: 'VAULT' },
   { id: 'funding', label: 'FUNDING' },
 ];

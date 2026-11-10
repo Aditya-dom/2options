@@ -6,6 +6,7 @@ import FundsDialog, { type FundsMode } from './components/FundsDialog';
 import Header, { type Tab } from './components/Header';
 import OptionChain, { type Pick } from './components/OptionChain';
 import Positions from './components/Positions';
+import StrategyBuilder from './components/StrategyBuilder';
 import TradeTicket from './components/TradeTicket';
 import VaultPage from './components/VaultPage';
 import { Button, Note } from './components/ui';
@@ -70,6 +71,7 @@ export default function App() {
             </div>
           </div>
         )}
+        {tab === 'strategy' && <StrategyBuilder />}
         {tab === 'vault' && <VaultPage onFunds={setFunds} />}
         {tab === 'funding' && (
           <div style={{ display: 'grid', gap: 12 }}>
