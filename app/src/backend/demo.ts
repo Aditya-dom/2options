@@ -463,6 +463,7 @@ export class DemoWorld {
       case 'lp_deposit': this.lpDeposit(id, call.amount); return ['LpMint'];
       case 'withdraw': this.withdraw(id, call.amount); return ['Withdraw'];
       case 'trade': this.execTrade(id, call.quote); return ['Trade'];
+      case 'trade_batch': for (const leg of call.legs) this.execTrade(id, leg.quote); return call.legs.map(() => 'Trade');
       case 'lp_request_redeem': this.lpRequestRedeem(id, call.shares); return ['LpRedeemRequest'];
       case 'lp_claim': this.claimLp(id); return ['LpClaim'];
       case 'register_usdc': return [];

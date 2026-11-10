@@ -21,6 +21,10 @@ const GAS_PAYOUT = 100n * TGAS;
 const GAS_TRADE = 150n * TGAS;
 const GAS_SIMPLE = 50n * TGAS;
 const ONE_YOCTO = 1n;
+/** Per-transaction prepaid gas limit, shared across a batch's trade() actions. */
+const MAX_TX_GAS = 300n * TGAS;
+/** ~75 TGas per leg; trade() gas is not measured yet (#18), so stay conservative. */
+export const MAX_BATCH_LEGS = 4;
 
 /** Zero-deposit methods a limited access key may call, so trades sign without a wallet popup. */
 export const ACCESS_KEY_METHODS = ['trade', 'withdraw', 'lp_request_redeem', 'lp_claim'];
@@ -64,13 +68,28 @@ export class ChainBackend implements Backend {
   }
 
   async submit(accountId: string, call: Call): Promise<CallResult> {
-    const { receiverId, action } = await this.toAction(accountId, call);
+    const { receiverId, actions } = await this.toTx(accountId, call);
     const wallet = await this.wallet();
-    const outcome = await wallet.signAndSendTransaction({ signerId: accountId, receiverId, actions: [action] });
+    const outcome = await wallet.signAndSendTransaction({ signerId: accountId, receiverId, actions });
     return readOutcome(outcome);
   }
 
-  private async toAction(accountId: string, call: Call) {
+  private async toTx(accountId: string, call: Call) {
+    if (call.kind === 'trade_batch') {
+      // One receipt: if any trade() panics, every leg reverts. Function-call access keys can only
+      // sign single-action transactions, so a batch needs one confirmation in the wallet.
+      if (call.legs.length > MAX_BATCH_LEGS) throw new Error(`at most ${MAX_BATCH_LEGS} legs per transaction`);
+      const gas = MAX_TX_GAS / BigInt(call.legs.length);
+      return {
+        receiverId: this.contractId,
+        actions: call.legs.map(l => actionCreators.functionCall('trade', { quote: l.quote, signature: l.signature }, gas < GAS_TRADE ? gas : GAS_TRADE, 0n)),
+      };
+    }
+    const { receiverId, action } = await this.toAction(accountId, call);
+    return { receiverId, actions: [action] };
+  }
+
+  private async toAction(accountId: string, call: Exclude<Call, { kind: 'trade_batch' }>) {
     const fc = actionCreators.functionCall;
     switch (call.kind) {
       case 'deposit':

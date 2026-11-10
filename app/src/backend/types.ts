@@ -8,6 +8,8 @@ export type Call =
   | { kind: 'lp_deposit'; amount: bigint }
   | { kind: 'withdraw'; amount: bigint }
   | { kind: 'trade'; quote: QuoteJson; signature: string }
+  /** Several trades in one transaction: all fill or none do. Legs run in the given order. */
+  | { kind: 'trade_batch'; legs: { quote: QuoteJson; signature: string }[] }
   | { kind: 'lp_request_redeem'; shares: bigint }
   | { kind: 'lp_claim' }
   | { kind: 'register_usdc' };

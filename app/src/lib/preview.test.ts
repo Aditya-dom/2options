@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test';
 import type { AccountState, Params, Series } from './contract';
-import { previewTrade } from './preview';
+import { executionOrder, previewBatch, previewTrade } from './preview';
 import { SIZE_SCALE, SPOT_SCALE, USDC_UNIT } from './units';
 
 const params: Params = {
@@ -43,6 +43,23 @@ test('a short ATM call needs about $1,100 at 3,500 (handoff §6)', () => {
 test('no account means the contract will say deposit first', () => {
   const p = previewTrade({ account: null, series, spots, params, trade: { series: call3500.id, side: 'Buy', size: SIZE_SCALE, price: 12n * USDC_UNIT } })!;
   expect(p.failure).toBe('deposit first');
+});
+
+test('a call spread fits where a naked short does not, but only with the buy first', () => {
+  const call3550: Series = { ...call3500, id: 'ETH-3550-C', strike: 3_550n * SPOT_SCALE, lastMark: 1n * USDC_UNIT };
+  const both = new Map([[call3500.id, call3500], [call3550.id, call3550]]);
+  const ctx = { account: account(300n), series: both, spots, params };
+  const sell = { series: call3500.id, side: 'Sell' as const, size: SIZE_SCALE, price: 12n * USDC_UNIT };
+  const buy = { series: call3550.id, side: 'Buy' as const, size: SIZE_SCALE, price: 1n * USDC_UNIT };
+
+  expect(previewBatch(ctx, [sell])!.failure).toBe('insufficient margin for this trade');
+  const ordered = previewBatch(ctx, executionOrder([sell, buy]))!;
+  expect(ordered.failure).toBeNull();
+  // Max loss of the spread at +20% is the $50 strike width, plus the 1% reserve on the short.
+  expect(ordered.reqAfter).toBe(85n * USDC_UNIT);
+  expect(ordered.cash).toBe(11n * USDC_UNIT); // net credit
+  const reversed = previewBatch(ctx, [sell, buy])!;
+  expect(reversed.failedLeg).toBe(0);
 });
 
 test('pending funding is settled before the margin check', () => {
