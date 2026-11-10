@@ -79,7 +79,7 @@ GET /quote?series=ETH-3500-C&side=Buy&size=1000000&taker=alice.testnet
 { "quote": { "series", "taker", "side", "size", "price", "nonce", "expiry_ns" }, "signature": "<base64>" }
 
 GET /spot
-{ "ETH": { "price": "350012345678", "ts_ns": "1762771200000000000" } }
+{ "ETH": { "price": "350012345678", "ts_ns": "1794268800000000000" } }
 ```
 
 CORS must allow the app's origin.
