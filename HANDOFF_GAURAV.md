@@ -2,9 +2,21 @@
 
 From Aditya, Nov 10, 2026. This replies to `HANDOFF_ADITYA.md`. The frontend is on branch `aditya/near-frontend`, in `app/` (see `app/README.md`).
 
-## Where the frontend is
+## Where things are
 
-Issues #26–#30 are built and running against an in-browser copy of the contract. Run `cd app && bun install && bun run dev`, then open http://localhost:3001 with no `.env`. That gives you a demo: deposit, trade, positions and margin health, funding, and the LP vault.
+Updated Nov 10 (second pass). **Frontend** (`app/`):
+- #26–#31: deposit/withdraw, chain, ticket, positions, funding, vault, and a strategy builder that executes all legs in one transaction;
+- #33: deposit from another chain via 1Click;
+- #35: an agent badge that verifies every quote's signature in the browser.
+
+**Agent helpers** (`agent/`, Python):
+- the wire format for signed messages, checked byte for byte against your contract;
+- the spot feed (#22);
+- vault inventory and net delta (#24).
+
+**CI** (`.github/workflows/near.yml`) tests the contract, app and agent; `make near-test` runs all of them locally.
+
+Run `make near-setup && make near-dev`, then open http://localhost:3001 with no `.env`, to get the full demo.
 
 The demo copies `trade`, `withdraw`, `lp_*` and `apply_funding` from `lib.rs` step by step: same checks, same rounding, same panic strings. It skips only the signature check. The margin code is a TypeScript port that matches `margin.rs`/`math.rs` exactly on 2,697 cases generated from your code (`contracts/perennia/examples/margin_vectors.rs`, a new example file; the wasm build is untouched). The trade ticket uses it to show margin before signing and to block trades the contract would reject.
 
@@ -90,12 +102,32 @@ Quote rules the contract enforces, so the agent needs to follow them:
 - `price` must sit in the band computed from the **contract's cached spot**, not the agent's live spot. Quoting near a band edge from a fresher spot can fail with `price is outside the allowed band`.
 - It would help to check the vault risk limit before quoting, or to return a `max_size` per series in `/chain`. Otherwise users can get a valid quote that reverts with `vault risk limit reached`.
 
-The attestation badge will check `agent_public_key` against your existing `is_agent_key` view, so it proves the key that signs quotes is the registered one.
+- **Multi-leg strategies** request one quote per leg, in execution order (buys first), then submit them as one transaction. That needs one wallet confirmation, because limited access keys can only sign single-action transactions. All of it has to fit inside `max_quote_ttl` (10 s), which is tight with a wallet popup. Please raise it to about 30 s (`validate_params` allows up to 60), or add a batch quote endpoint.
+
+The badge checks `agent_public_key` against your `is_agent_key` view and verifies every quote's signature in the browser. That proves each quote comes from the registered key. Publishing `/attestation` (or giving me the key for `VITE_AGENT_PUBLIC_KEY`) turns it on.
+
+### Signing helpers you can use
+
+`agent/perennia_agent/wire.py` encodes `Quote`, `SpotUpdate` and `FundingUpdate` and signs them. Its tests compare bytes, digests and signatures against `contracts/perennia/examples/wire_vectors.rs`, which uses your types and runs the signatures through `post_spot` and `settle_funding` on a real `Perennia` instance. If your quoter is in Python, import it; if not, the fixture (`agent/tests/fixtures/wire_vectors.json`) is a ready-made test for any language. The app's TypeScript check uses the same fixture.
+
+### Spot feed (#22) and inventory (#24)
+
+- **Spot feed:** `perennia_agent.spot`. Pyth Hermes now returns 401 without an API key, so the feed takes the median of Coinbase, Kraken, Binance and Hyperliquid. It holds instead of posting when fewer than 2 venues are fresh, when they disagree by more than 50 bps, or on a move your jump limit would refuse; `ts_ns`/`seq` never go backwards. Your keeper only needs to sign and post: `{"update": d.update.to_json(), "signature": sign(key, contract, d.update)}`. If we get a Pyth key, Pyth can be added as a fifth venue.
+- **Inventory:** `perennia_agent.inventory` reads `list_series` + `get_spot`, not events, because `net_trader_size` is already exact on chain. It returns the vault position and delta per series, net delta per underlying, and the perp `hedge_target`, plus `rebalance()` with a deadband. Swap `greeks.everlasting_delta` for #20's pricing when it lands.
+
+Live ETH is about $2,110 (Nov 10), not the $3,500 in the handoff. Strikes should be listed around the real spot.
 
 ## 5. Answers to your §9 questions
 
-1. **Shade Agent quickstart:** I haven't run it yet (#5). It's my next task, and I'll report the account, keys and cost.
-2. **1Click on testnet:** not tried yet (#6). Also next.
+1. **Shade Agent quickstart:** not run yet (#5). It needs a Phala account and possibly a paid deployment, which I'll set up myself. I'll report the account, keys and cost.
+2. **1Click on testnet (#6, done):** 1Click is **mainnet only** (39 chains, no testnet).
+   - Quotes, deposit addresses and status work **without an API key**; 1Click then adds its own fee (20 bps on SOL→USDC, 1 bp on Base USDC→USDC).
+   - CORS allows any origin, so the app calls it directly. Delivery takes about 22–35 s after the deposit confirms.
+   - I deliver USDC to the **user's own NEAR wallet** and then run the normal deposit. 1Click's `customRecipientMsg` could `ft_transfer_call` straight into perennia, but `ft_on_transfer` credits `sender_id`, which would be the intents contract, not the user.
+   - **Decision needed:** where do we demo #33?
+     - (a) perennia on mainnet with small caps;
+     - (b) show the swap landing in a mainnet wallet, with the deposit on testnet shown separately;
+     - (c) add `msg = "deposit:<account_id>"` to `ft_on_transfer` to credit a named account, which is safe because the sender pays.
 3. **Agent API:** keep your §5, with the units and two additions in §4 above.
 4. **Wallets:** Meteor, HOT and MyNearWallet are wired in. Sign-in also adds a limited key for `trade`, `withdraw`, `lp_request_redeem` and `lp_claim`, so trades sign without a popup inside the 10 s quote window. Deposits still ask the wallet, because they attach 1 yocto.
 
@@ -107,6 +139,6 @@ The attestation badge will check `agent_public_key` against your existing `is_ag
 
 ## 7. What I'm doing next
 
-1. Spikes #3, #5, #6: testnet account, Shade Agent on Phala, 1Click quote. I'll send you my testnet account id for test USDC.
-2. Testnet end to end as soon as §1 is done.
-3. #33 (1Click deposit), #35 (attestation badge), #31 (strategy builder), in that order.
+1. Spikes #3 and #5: testnet account and Shade Agent on Phala. I'll send you my testnet account id for test USDC.
+2. Testnet end to end as soon as §1 is done. Nothing in `app/` or `agent/` has run against a deployed contract yet.
+3. The TEE half of the badge, once the agent runs as a Shade Agent (#34).
