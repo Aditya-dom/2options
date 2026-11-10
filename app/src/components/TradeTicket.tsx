@@ -8,6 +8,7 @@ import {
   big, fmtPremium, fmtSignedUsdc, fmtSize, fmtUsdc, NS_PER_MS, parseUnits, SIZE_SCALE, SPOT_SCALE, USDC_UNIT,
 } from '../lib/units';
 import { useNow, useProtocol } from '../hooks/useProtocol';
+import { BAD_SIGNATURE, checkQuote } from '../hooks/useAgentTrust';
 import { useWallet } from '../hooks/useWallet';
 import { agent } from '../services';
 import { useTheme } from '../theme';
@@ -92,7 +93,9 @@ export default function TradeTicket({ pick, onPick, size, onSize }: {
     setBusy('quote');
     setQuoteErr(null);
     try {
-      setQuote(await agent.quote({ series: pick.series, side, size: sizeUnits!, taker: accountId }));
+      const q = await agent.quote({ series: pick.series, side, size: sizeUnits!, taker: accountId });
+      if (checkQuote(q)) setQuote(q);
+      else setQuoteErr(BAD_SIGNATURE);
     } catch (e) {
       setQuoteErr(friendlyError(e));
     } finally {

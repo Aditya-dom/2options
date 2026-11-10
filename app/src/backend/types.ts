@@ -38,6 +38,8 @@ export interface Backend {
   usdcBalance(accountId: string): Promise<bigint>;
   /** Whether the account can receive USDC; withdrawals to an unregistered account bounce. */
   usdcRegistered(accountId: string): Promise<boolean>;
+  /** `is_agent_key`: whether the contract accepts signatures from this key. Null when not applicable. */
+  isAgentKey(key: string): Promise<boolean | null>;
 
   submit(accountId: string, call: Call): Promise<CallResult>;
 }
@@ -82,6 +84,13 @@ export interface QuoteRequest {
   taker: string;
 }
 
+/** `GET /attestation` (proposed, HANDOFF_GAURAV.md §4). TEE fields arrive with the Shade Agent (#34). */
+export interface Attestation {
+  agent_public_key: string;
+  code_hash?: string;
+  tee_quote_url?: string;
+}
+
 export interface Agent {
   readonly kind: 'http' | 'mock';
   /** False when quotes cannot pass the contract's signature check (mock agent against a real chain). */
@@ -89,4 +98,6 @@ export interface Agent {
   chain(): Promise<ChainRow[]>;
   quote(req: QuoteRequest): Promise<SignedQuote>;
   spot(): Promise<Partial<Record<Underlying, SpotPoint>>>;
+  /** Null when the agent does not publish one. */
+  attestation(): Promise<Attestation | null>;
 }

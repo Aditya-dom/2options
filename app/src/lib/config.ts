@@ -23,6 +23,8 @@ export const config = {
   contractId: str(env.VITE_CONTRACT_ID),
   usdcId: str(env.VITE_USDC_ID),
   agentUrl: str(env.VITE_AGENT_URL).replace(/\/+$/, ''),
+  /** Optional `ed25519:…` key to verify quotes against; otherwise taken from the agent's /attestation. */
+  agentPublicKey: str(env.VITE_AGENT_PUBLIC_KEY),
   rpcUrl: str(env.VITE_NEAR_RPC_URL) || DEFAULT_RPC[network],
   explorerUrl: EXPLORER[network],
 };
@@ -35,6 +37,9 @@ export function configErrors(): string[] {
   if (network !== 'testnet' && network !== 'mainnet') errs.push(`VITE_NEAR_NETWORK must be testnet or mainnet, got "${network}"`);
   if (!isDemo && !config.usdcId) errs.push('VITE_CONTRACT_ID is set but VITE_USDC_ID is not');
   if (config.agentUrl && !/^https?:\/\//.test(config.agentUrl)) errs.push('VITE_AGENT_URL must be an http(s) URL');
+  if (config.agentPublicKey && !/^ed25519:[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(config.agentPublicKey)) {
+    errs.push('VITE_AGENT_PUBLIC_KEY must look like ed25519:<base58>');
+  }
   return errs;
 }
 

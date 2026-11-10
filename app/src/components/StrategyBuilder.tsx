@@ -9,6 +9,7 @@ import { DEFAULT_VOL, everlasting } from '../lib/pricing';
 import { buildPreset, PRESETS, type StrategyLeg } from '../lib/strategies';
 import { big, fmtPremium, fmtUsdc, NS_PER_MS, parseUnits, SIZE_SCALE, SPOT_SCALE, USDC_UNIT } from '../lib/units';
 import { useNow, useProtocol } from '../hooks/useProtocol';
+import { BAD_SIGNATURE, checkQuote } from '../hooks/useAgentTrust';
 import { useWallet } from '../hooks/useWallet';
 import { agent, backend } from '../services';
 import { useTheme } from '../theme';
@@ -127,7 +128,8 @@ export default function StrategyBuilder() {
       // Sequential, in execution order: each trade's nonce must exceed the previous one.
       const qs: SignedQuote[] = [];
       for (const l of ordered) qs.push(await agent.quote({ series: l.series, side: l.side, size: l.units, taker: accountId }));
-      setQuotes(qs);
+      if (qs.every(checkQuote)) setQuotes(qs);
+      else setErr(BAD_SIGNATURE);
     } catch (e) {
       setErr(friendlyError(e));
     } finally {

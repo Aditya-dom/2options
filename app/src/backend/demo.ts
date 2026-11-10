@@ -542,6 +542,7 @@ export class DemoBackend implements Backend {
   async getLpClaim(id: string) { return this.world.lpClaim(id); }
   async usdcBalance(id: string) { return this.world.wallet(id); }
   async usdcRegistered() { return true; }
+  async isAgentKey() { return null; }
 
   async submit(accountId: string, call: Call): Promise<CallResult> {
     await sleep(500 + Math.random() * 500); // block time, so the UI's pending states get exercised

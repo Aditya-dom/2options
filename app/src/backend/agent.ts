@@ -8,7 +8,7 @@ import { priceBand } from '../lib/margin';
 import type { Params, QuoteJson, Series, SpotPoint, Underlying } from '../lib/contract';
 import { everlasting, intrinsicF } from '../lib/pricing';
 import { big, FUNDING_SCALE, NS_PER_MS, nowNs, SPOT_SCALE, USDC_UNIT } from '../lib/units';
-import type { Agent, ChainRow, ChainRowJson, QuoteRequest, SignedQuote } from './types';
+import type { Agent, Attestation, ChainRow, ChainRowJson, QuoteRequest, SignedQuote } from './types';
 
 export class HttpAgent implements Agent {
   readonly kind = 'http' as const;
@@ -45,6 +45,13 @@ export class HttpAgent implements Agent {
       size: req.size.toString(),
       taker: req.taker,
     });
+  }
+
+  async attestation(): Promise<Attestation | null> {
+    const res = await fetch(`${this.baseUrl}/attestation`, { headers: { Accept: 'application/json' } });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`agent /attestation: HTTP ${res.status}`);
+    return res.json() as Promise<Attestation>;
   }
 
   async spot(): Promise<Partial<Record<Underlying, SpotPoint>>> {
@@ -110,6 +117,7 @@ export class PricingAgent implements Agent {
   }
 
   spot() { return this.src.spots(); }
+  async attestation() { return null; }
 }
 
 const toMicros = (usd: number) => BigInt(Math.round(usd * 1e6));

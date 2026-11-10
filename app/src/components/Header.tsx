@@ -5,6 +5,7 @@ import { useProtocol } from '../hooks/useProtocol';
 import { useWallet } from '../hooks/useWallet';
 import { useTheme } from '../theme';
 import { fmtDuration, useFundingCountdown } from './FundingPanel';
+import AgentBadge from './AgentBadge';
 import { Badge } from './ui';
 
 export type Tab = 'trade' | 'strategy' | 'vault' | 'funding';
@@ -29,6 +30,7 @@ export default function Header({ tab, onTab }: { tab: Tab; onTab: (t: Tab) => vo
         <img src="/logo.svg" alt="" style={{ width: 22, height: 22, borderRadius: 3 }} />
         <span className="header-brand" style={{ fontFamily: t.MONO, fontSize: 13, fontWeight: 700, letterSpacing: '0.14em', color: t.WHITE }}>PERENNIA</span>
         <Badge color={isDemo ? t.ORANGE : t.ACCENT}>{isDemo ? 'DEMO' : config.network.toUpperCase()}</Badge>
+        <AgentBadge />
       </div>
       {TABS.map(x => {
         const active = tab === x.id;

@@ -4,6 +4,7 @@ import { Toaster } from 'sonner';
 import App from './App';
 import './globals.css';
 import { ProtocolProvider } from './hooks/useProtocol';
+import { loadAgentTrust } from './hooks/useAgentTrust';
 import { initWallet } from './hooks/useWallet';
 import { configErrors } from './lib/config';
 import { ThemeSync, useTheme } from './theme';
@@ -35,6 +36,7 @@ function Root() {
 }
 
 void initWallet();
+void loadAgentTrust();
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

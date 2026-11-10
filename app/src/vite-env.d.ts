@@ -5,6 +5,7 @@ interface ImportMetaEnv {
   readonly VITE_CONTRACT_ID?: string;
   readonly VITE_USDC_ID?: string;
   readonly VITE_AGENT_URL?: string;
+  readonly VITE_AGENT_PUBLIC_KEY?: string;
   readonly VITE_NEAR_RPC_URL?: string;
 }
 

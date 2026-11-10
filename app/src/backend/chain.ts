@@ -67,6 +67,8 @@ export class ChainBackend implements Backend {
     return (await this.view<object | null>('storage_balance_of', { account_id: accountId }, this.usdcId)) != null;
   }
 
+  isAgentKey(key: string) { return this.view<boolean>('is_agent_key', { key }); }
+
   async submit(accountId: string, call: Call): Promise<CallResult> {
     const { receiverId, actions } = await this.toTx(accountId, call);
     const wallet = await this.wallet();
