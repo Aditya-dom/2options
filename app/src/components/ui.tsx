@@ -1,5 +1,22 @@
+import { X } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
 import { useTheme } from '../theme';
+
+export function Dialog({ title, onClose, children, width = 400 }: { title: string; onClose: () => void; children: ReactNode; width?: number }) {
+  const { t } = useTheme();
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div role="dialog" aria-modal="true" aria-label={title} onClick={e => e.stopPropagation()}
+        style={{ width: '100%', maxWidth: width, maxHeight: '100%', overflowY: 'auto', background: t.PANEL, border: `1px solid ${t.BORDER}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${t.BORDER}` }}>
+          <span style={{ fontFamily: t.MONO, fontSize: 10, letterSpacing: '0.16em', color: t.ACCENT }}>{title}</span>
+          <button onClick={onClose} aria-label="Close" style={{ background: 'transparent', border: 'none', color: t.GRAY, cursor: 'pointer' }}><X size={14} /></button>
+        </div>
+        <div style={{ padding: 14, display: 'grid', gap: 10 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
 
 export function Panel({ title, right, children, style, bodyStyle }: {
   title: string; right?: ReactNode; children: ReactNode; style?: CSSProperties; bodyStyle?: CSSProperties;

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import AccountPanel from './components/AccountPanel';
+import CrossChainDeposit from './components/CrossChainDeposit';
 import FundingPanel from './components/FundingPanel';
 import FundsDialog, { type FundsMode } from './components/FundsDialog';
 import Header, { type Tab } from './components/Header';
@@ -22,6 +23,8 @@ export default function App() {
   const [pick, setPick] = useState<Pick | null>(null);
   const [size, setSize] = useState('1');
   const [funds, setFunds] = useState<FundsMode | null>(null);
+  const [bridge, setBridge] = useState(false);
+  const accountId = useWallet(s => s.accountId);
 
   const ticketRef = useRef<HTMLDivElement>(null);
   // Single-column layouts put the ticket below the chain; bring it into view on a pick.
@@ -60,7 +63,7 @@ export default function App() {
               <Positions onClose={closePosition} />
             </div>
             <div style={{ display: 'grid', gap: 12, minWidth: 0, alignContent: 'start' }}>
-              <AccountPanel onFunds={setFunds} />
+              <AccountPanel onFunds={setFunds} onBridge={() => setBridge(true)} />
               <div ref={ticketRef} style={{ scrollMarginTop: 12 }}>
                 <TradeTicket pick={pick} onPick={setPick} size={size} onSize={setSize} />
               </div>
@@ -76,6 +79,7 @@ export default function App() {
         )}
       </main>
       {funds && <FundsDialog mode={funds} onClose={() => setFunds(null)} />}
+      {bridge && accountId && <CrossChainDeposit onClose={() => setBridge(false)} />}
     </div>
   );
 }

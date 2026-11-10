@@ -515,6 +515,13 @@ export class DemoWorld {
   lpShares(id: string) { return this.s.lpShares[id] ?? 0n; }
   lpClaim(id: string): LpClaim | null { const c = this.s.lpClaims[id]; return c ? { ...c } : null; }
   wallet(id: string) { return this.s.wallets[id] ?? 0n; }
+
+  /** Simulated 1Click delivery: USDC arrives in the user's wallet, outside the contract. */
+  creditWallet(id: string, amount: bigint) {
+    this.s.wallets[id] = (this.s.wallets[id] ?? 0n) + amount;
+    this.save();
+    this.emit();
+  }
 }
 
 export class DemoBackend implements Backend {

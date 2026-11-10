@@ -12,7 +12,7 @@ const TIER_LABEL: Record<HealthTier, string> = {
   healthy: 'HEALTHY', warning: 'BELOW INITIAL', 'close-only': 'CLOSE ONLY', liquidatable: 'LIQUIDATABLE',
 };
 
-export default function AccountPanel({ onFunds }: { onFunds: (m: FundsMode) => void }) {
+export default function AccountPanel({ onFunds, onBridge }: { onFunds: (m: FundsMode) => void; onBridge: () => void }) {
   const { t } = useTheme();
   const { account, params, series, usdc } = useProtocol();
   const accountId = useWallet(s => s.accountId);
@@ -64,6 +64,9 @@ export default function AccountPanel({ onFunds }: { onFunds: (m: FundsMode) => v
         <Button onClick={() => onFunds('deposit')}>DEPOSIT</Button>
         <Button variant="ghost" onClick={() => onFunds('withdraw')} disabled={!account}>WITHDRAW</Button>
       </div>
+      <Button variant="ghost" onClick={onBridge} style={{ width: '100%', marginTop: 6 }}>
+        DEPOSIT FROM ANOTHER CHAIN
+      </Button>
     </Panel>
   );
 }
