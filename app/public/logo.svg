@@ -1,0 +1,17 @@
+<svg width="400" height="400" viewBox="0 0 400 400" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="400" fill="#111111"/>
+
+  <g transform="translate(200, 200)">
+    <!-- base filled circle -->
+    <circle cx="0" cy="0" r="95" fill="#00e5ff"/>
+
+    <!-- 4 circular cutouts -->
+    <circle cx="0"   cy="-46" r="52" fill="#111111"/>
+    <circle cx="46"  cy="0"   r="52" fill="#111111"/>
+    <circle cx="0"   cy="46"  r="52" fill="#111111"/>
+    <circle cx="-46" cy="0"   r="52" fill="#111111"/>
+
+    <!-- center diamond -->
+    <rect x="-18" y="-18" width="36" height="36" rx="4" fill="#00e5ff" transform="rotate(45)"/>
+  </g>
+</svg>

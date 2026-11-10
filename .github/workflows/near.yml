@@ -1,0 +1,63 @@
+name: near
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  contract:
+    name: Contract (test, clippy, wasm build, fixtures)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: contracts/perennia
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          # near-sdk is pinned below 5.30, which needs a newer Rust (contracts/README.md).
+          toolchain: '1.91'
+          targets: wasm32-unknown-unknown
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: contracts
+      - run: cargo test --lib
+      - run: cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
+      - run: cargo build --lib --target wasm32-unknown-unknown --release
+      - name: Parity fixtures match the contract code
+        run: |
+          cargo run -q --example margin_vectors | diff -q - ../../app/src/lib/fixtures/margin_vectors.json
+          cargo run -q --example wire_vectors 2>/dev/null | diff -q - ../../agent/tests/fixtures/wire_vectors.json
+
+  app:
+    name: App (types, tests, build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.9
+      - run: bun install --frozen-lockfile
+      - run: bun test src
+      - run: bun run build
+
+  agent:
+    name: Agent (lint, types, tests)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync --python 3.11 --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy perennia_agent
+      - run: uv run pytest -q
