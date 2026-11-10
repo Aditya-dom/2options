@@ -1,10 +1,12 @@
 import { X } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { useTheme } from '../theme';
 
+/** Portalled to <body> so it never inherits styles (e.g. the header's nowrap) or gets clipped. */
 export function Dialog({ title, onClose, children, width = 400 }: { title: string; onClose: () => void; children: ReactNode; width?: number }) {
   const { t } = useTheme();
-  return (
+  return createPortal(
     <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 50, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
       <div role="dialog" aria-modal="true" aria-label={title} onClick={e => e.stopPropagation()}
         style={{ width: '100%', maxWidth: width, maxHeight: '100%', overflowY: 'auto', background: t.PANEL, border: `1px solid ${t.BORDER}` }}>
@@ -12,9 +14,10 @@ export function Dialog({ title, onClose, children, width = 400 }: { title: strin
           <span style={{ fontFamily: t.MONO, fontSize: 10, letterSpacing: '0.16em', color: t.ACCENT }}>{title}</span>
           <button onClick={onClose} aria-label="Close" style={{ background: 'transparent', border: 'none', color: t.GRAY, cursor: 'pointer' }}><X size={14} /></button>
         </div>
-        <div style={{ padding: 14, display: 'grid', gap: 10 }}>{children}</div>
+        <div style={{ padding: 14, display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 10 }}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -120,9 +123,9 @@ export function Badge({ children, color }: { children: ReactNode; color: string 
 export function Row({ label, value, color }: { label: ReactNode; value: ReactNode; color?: string }) {
   const { t } = useTheme();
   return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontFamily: t.MONO, fontSize: 11, padding: '3px 0' }}>
-      <span style={{ color: t.GRAY }}>{label}</span>
-      <span className="tabular-nums" style={{ color: color ?? t.WHITE, textAlign: 'right' }}>{value}</span>
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontFamily: t.MONO, fontSize: 11, padding: '3px 0', minWidth: 0 }}>
+      <span style={{ color: t.GRAY, flexShrink: 0 }}>{label}</span>
+      <span className="tabular-nums" style={{ color: color ?? t.WHITE, textAlign: 'right', minWidth: 0, overflowWrap: 'anywhere' }}>{value}</span>
     </div>
   );
 }
@@ -131,7 +134,7 @@ export function Note({ children, tone = 'info' }: { children: ReactNode; tone?: 
   const { t } = useTheme();
   const c = tone === 'error' ? t.RED : tone === 'warn' ? t.ORANGE : t.ACCENT;
   return (
-    <div style={{ fontFamily: t.MONO, fontSize: 11, lineHeight: 1.5, color: c, border: `1px solid ${c}`, background: 'transparent', padding: '8px 10px', opacity: 0.95 }}>
+    <div style={{ fontFamily: t.MONO, fontSize: 11, lineHeight: 1.5, color: c, border: `1px solid ${c}`, background: 'transparent', padding: '8px 10px', opacity: 0.95, overflowWrap: 'anywhere' }}>
       {children}
     </div>
   );

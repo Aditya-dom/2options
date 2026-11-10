@@ -41,8 +41,11 @@ export const useWallet = create<WalletStore>(set => ({
 export async function initWallet(): Promise<void> {
   if (isDemo || selector) return;
   try {
+    // Wallet SDKs read Node globals at import time.
     const { Buffer } = await import('buffer');
-    (globalThis as { Buffer?: unknown }).Buffer ??= Buffer;
+    const g = globalThis as { Buffer?: unknown; process?: unknown };
+    g.Buffer ??= Buffer;
+    g.process ??= { env: {}, browser: true, version: '', versions: {}, nextTick: (fn: (...a: unknown[]) => void, ...a: unknown[]) => queueMicrotask(() => fn(...a)) };
     const [{ setupWalletSelector }, { setupModal }, { setupMeteorWallet }, { setupHotWallet }, { setupMyNearWallet }] = await Promise.all([
       import('@near-wallet-selector/core'),
       import('@near-wallet-selector/modal-ui'),
