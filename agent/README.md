@@ -32,6 +32,7 @@ Signing and posting belong to the keeper:
 ```python
 from perennia_agent.spot import SpotFeed
 from perennia_agent.wire import Underlying, sign
+
 for d in SpotFeed([Underlying.ETH]).poll():
     if d.update:
         args = {"update": d.update.to_json(), "signature": sign(agent_key, CONTRACT_ID, d.update)}
