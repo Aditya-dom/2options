@@ -1,26 +1,26 @@
 # Handoff for Gaurav
 
-From Aditya, Nov 10, 2026. This replies to `HANDOFF_ADITYA.md`. The frontend is on branch `aditya/near-frontend`, in `app/` (see `app/README.md`).
+From Aditya, Nov 10, 2026 (final update for today). This replies to `HANDOFF_ADITYA.md`. Everything is on branch `aditya/near-frontend`, in **PR #46**. The new `near` CI workflow passes there: contract, app and agent.
 
-## Where things are
+## Where my issues stand
 
-Updated Nov 10 (second pass). **Frontend** (`app/`):
-- #26–#31: deposit/withdraw, chain, ticket, positions, funding, vault, and a strategy builder that executes all legs in one transaction;
-- #33: deposit from another chain via 1Click;
-- #35: an agent badge that verifies every quote's signature in the browser.
-
-**Agent helpers** (`agent/`, Python):
-- the wire format for signed messages, checked byte for byte against your contract;
-- the spot feed (#22);
-- vault inventory and net delta (#24).
-
-**CI** (`.github/workflows/near.yml`) tests the contract, app and agent; `make near-test` runs all of them locally.
+| Issue | Board | State |
+|---|---|---|
+| #26–#30 Frontend | In Progress | Built and tested against the in-browser contract; waits on §1 for testnet. |
+| #31 Strategy builder | In Progress | Presets and editable legs; all legs fill in one transaction or none do. |
+| #33 Deposit from another chain | In Progress | Works end to end in the demo against live 1Click quotes; waits on the mainnet decision in §5. |
+| #35 Agent badge | In Progress | Verifies every quote's signature and the key's registration; the TEE half waits on #5 and #34. |
+| #6 1Click spike | Done | Answers in §5. |
+| #22 Spot feed | Done | `agent/perennia_agent/spot.py`; your keeper signs and posts. |
+| #24 Inventory / net delta | In Progress | `agent/perennia_agent/inventory.py`; waits on a deployed contract to run against. |
+| #42 CI + one-command setup | Done | `make near-setup`, `make near-test`, `make near-dev`; `near` workflow green. |
+| #3 Testnet account, #5 Shade Agent | Todo | Mine, next (§7). |
 
 Run `make near-setup && make near-dev`, then open http://localhost:3001 with no `.env`, to get the full demo.
 
 The demo copies `trade`, `withdraw`, `lp_*` and `apply_funding` from `lib.rs` step by step: same checks, same rounding, same panic strings. It skips only the signature check. The margin code is a TypeScript port that matches `margin.rs`/`math.rs` exactly on 2,697 cases generated from your code (`contracts/perennia/examples/margin_vectors.rs`, a new example file; the wasm build is untouched). The trade ticket uses it to show margin before signing and to block trades the contract would reject.
 
-Nothing has been tested on testnet, because nothing is deployed. Pointing the app at testnet takes three env vars. Everything below is what I need for that.
+Nothing has been tested against a deployed contract, because nothing is deployed. I did run the app in chain mode against real testnet RPC with a mock agent. That run found a crash that stopped the wallet selector from starting (a wallet SDK reads Node's `process`), which is now fixed: the modal lists Meteor, HOT and MyNearWallet. Pointing the app at testnet takes three env vars. Everything below is what I need for that.
 
 ---
 
@@ -60,7 +60,7 @@ The `/24` comes from `FUNDING_PERIODS_PER_DAY = 24` in `core/everlasting.py`, ca
   - Check whether `tv_reserve_bps` (1% of spot) is still enough for the larger time value.
   - Strikes up to about ±10% become meaningful (σ√2d ≈ 4.4%). Under f = 1 h, anything beyond about ±3% prices at roughly $0.
 
-I lean towards **B**: it needs no code change four days before the freeze. Confidence is high that the mismatch is real, since it's the agent's own Γ and funding, and medium on the exact parameter values, so please check them with your model. The frontend reads band, cap and rates from the chain and the agent, so either choice needs no app change.
+I lean towards **B**: it needs no code change three days before the Nov 13 freeze. Confidence is high that the mismatch is real, since it's the agent's own Γ and funding, and medium on the exact parameter values, so please check them with your model. The frontend reads band, cap and rates from the chain and the agent, so either choice needs no app change.
 
 ## 3. Small contract changes
 
@@ -129,13 +129,14 @@ Live ETH is about $2,110 (Nov 10), not the $3,500 in the handoff. Strikes should
      - (b) show the swap landing in a mainnet wallet, with the deposit on testnet shown separately;
      - (c) add `msg = "deposit:<account_id>"` to `ft_on_transfer` to credit a named account, which is safe because the sender pays.
 3. **Agent API:** keep your §5, with the units and two additions in §4 above.
-4. **Wallets:** Meteor, HOT and MyNearWallet are wired in. Sign-in also adds a limited key for `trade`, `withdraw`, `lp_request_redeem` and `lp_claim`, so trades sign without a popup inside the 10 s quote window. Deposits still ask the wallet, because they attach 1 yocto.
+4. **Wallets:** Meteor, HOT and MyNearWallet are wired in, and the modal loads against testnet RPC. Sign-in also adds a limited key for `trade`, `withdraw`, `lp_request_redeem` and `lp_claim`, so trades sign without a popup inside the 10 s quote window. Deposits still ask the wallet, because they attach 1 yocto.
 
 ## 6. Eligibility, before we submit
 
-- **#2 is still open on the board**: did the organizers say the pricing math can be reused? The app's `app/src/lib/pricing.ts` is a TypeScript port of `core/everlasting.py`, so it needs the same disclosure.
-- **This repo's history starts Oct 23 with the whole Solana project** (201 files). The plan says to submit from a fresh public repo created on Nov 1, without the old history, because judges read the git log. When do we move, and what goes in? `contracts/`, `app/`, the plan and spec docs, and the agent once it exists.
+- **#2 (can we reuse the pricing math?):** you closed the issue on Oct 24 with no comment. The board still shows Todo because my board-setup script reset its status two minutes later; sorry about that. Did the organizers answer? Please put their answer in the issue. Either way we need disclosure wording: `app/src/lib/pricing.ts` and `agent/perennia_agent/greeks.py` are ports of `core/everlasting.py`.
+- **This repo's history starts Oct 23 with the whole Solana project** (201 files). The plan says to submit from a fresh public repo created on Nov 1, without the old history, because judges read the git log. When do we move, and what goes in? `contracts/`, `app/`, `agent/`, the plan and spec docs, and your quoter and keeper.
 - **#4 (fixed-point scheme) can be marked Done.** The contract settled it: USDC 1e6, prices 1e8, funding 1e9.
+- **The old `ci` workflow shows "cancelled" on every run, including on `main`.** Its two macOS jobs stop within a second of starting, most likely because macOS runners aren't available on this private repo's plan; the Ubuntu jobs pass. It only builds the Solana-era `perennia_math` wheel, so I'd drop it, or its macOS matrix, rather than ship a red check. It's your repo setting, so I left it alone.
 
 ## 7. What I'm doing next
 
