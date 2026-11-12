@@ -1,3 +1,4 @@
+import type { Fill } from '../lib/history';
 import type {
   AccountState, LpClaim, Params, QuoteJson, Series, Side, SpotPoint, Underlying, Vault,
 } from '../lib/contract';
@@ -40,6 +41,9 @@ export interface Backend {
   usdcRegistered(accountId: string): Promise<boolean>;
   /** `is_agent_key`: whether the contract accepts signatures from this key. Null when not applicable. */
   isAgentKey(key: string): Promise<boolean | null>;
+
+  /** The account's fills, newest first. */
+  tradeHistory(accountId: string): Promise<Fill[]>;
 
   submit(accountId: string, call: Call): Promise<CallResult>;
 }

@@ -10,6 +10,8 @@ import {
 } from '../lib/contract';
 import { big } from '../lib/units';
 import { viewCall } from './rpc';
+import { config } from '../lib/config';
+import { fetchFills, type Fill } from '../lib/history';
 import type { Backend, Call, CallResult } from './types';
 
 const TGAS = 1_000_000_000_000n;
@@ -38,6 +40,10 @@ export class ChainBackend implements Backend {
     private readonly rpcUrl: string | readonly string[],
     private readonly wallet: () => Promise<Wallet>,
   ) {}
+
+  tradeHistory(accountId: string): Promise<Fill[]> {
+    return fetchFills(config.network, accountId, this.contractId);
+  }
 
   private view<T>(method: string, args: object = {}, account = this.contractId): Promise<T> {
     return viewCall<T>(this.rpcUrl, account, method, args);

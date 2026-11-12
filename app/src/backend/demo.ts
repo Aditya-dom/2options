@@ -16,12 +16,14 @@ import type {
 } from '../lib/contract';
 import { DEFAULT_VOL } from '../lib/pricing';
 import { big, BPS, FUNDING_SCALE, NS_PER_MS, nowNs, SIZE_SCALE, SPOT_SCALE, USDC_UNIT } from '../lib/units';
+import type { Fill } from '../lib/history';
 import { priceRow, PricingAgent } from './agent';
 import type { Backend, Call, CallResult } from './types';
 
 export const DEMO_ACCOUNT = 'you.demo';
 const SEED_LP = 'seed-lp.demo';
 const WHALE = 'whale.demo';
+let fillSeq = 0;
 const STORAGE_KEY = 'twooptions-demo-v2';
 const SEC = 1_000_000_000n;
 
@@ -58,6 +60,8 @@ interface DemoState {
   lpPending: bigint;
   lastFundingEpoch: bigint;
   fundingLog: FundingLogEntry[];
+  /** Every fill, newest first (the chain backend reads these from an indexer instead). */
+  fills?: Fill[];
 }
 
 class Panic extends Error {}
@@ -350,6 +354,17 @@ export class DemoWorld {
   }
 
   private execTrade(taker: string, q: QuoteJson) {
+    this.execTradeChecked(taker, q);
+    const fills = (this.s.fills ??= []);
+    fills.unshift({ txHash: `demo-${Date.now().toString(36)}-${(fillSeq++).toString(36)}`, leg: 0, atMs: Date.now(), series: q.series, side: q.side, size: big(q.size), price: big(q.price), taker } as Fill & { taker: string });
+    fills.length = Math.min(fills.length, 500);
+  }
+
+  fillsOf(account: string): Fill[] {
+    return (this.s.fills ?? []).filter(f => (f as Fill & { taker?: string }).taker === account).map(f => ({ ...f }));
+  }
+
+  private execTradeChecked(taker: string, q: QuoteJson) {
     const p = this.s.params;
     require_(taker === q.taker, 'quote is for a different taker');
     const now = nowNs();
@@ -543,6 +558,7 @@ export class DemoBackend implements Backend {
   async usdcBalance(id: string) { return this.world.wallet(id); }
   async usdcRegistered() { return true; }
   async isAgentKey() { return null; }
+  async tradeHistory(id: string) { return this.world.fillsOf(id); }
 
   async submit(accountId: string, call: Call): Promise<CallResult> {
     await sleep(500 + Math.random() * 500); // block time, so the UI's pending states get exercised
