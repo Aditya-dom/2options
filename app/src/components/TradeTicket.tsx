@@ -14,16 +14,19 @@ import { useWallet } from '../hooks/useWallet';
 import { agent } from '../services';
 import { useTheme } from '../theme';
 import { fundingPerHour, type Pick } from './OptionChain';
+import type { FundsMode } from './FundsDialog';
 import PayoffChart from './PayoffChart';
 import { AmountInput, Button, Empty, Note, Panel, Row } from './ui';
 
 const MIN_SIZE = 1_000n; // 0.001 contract, the contract's MIN_TRADE_SIZE
 
-export default function TradeTicket({ pick, onPick, size, onSize }: {
+export default function TradeTicket({ pick, onPick, size, onSize, onFunds }: {
   pick: Pick | null;
   onPick: (p: Pick) => void;
   size: string;
   onSize: (s: string) => void;
+  /** Opens the deposit or withdraw dialog. */
+  onFunds: (m: FundsMode) => void;
 }) {
   const { t } = useTheme();
   const { series, chain, spots, params, account, paused, send } = useProtocol();
@@ -123,6 +126,8 @@ export default function TradeTicket({ pick, onPick, size, onSize }: {
 
   return (
     <Panel bare title="ORDER" bodyStyle={{ padding: 0 }}>
+      {/* Pinned, so the side tabs and the funding buttons stay in view while the ticket scrolls. */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 2, background: t.BG }}>
       <div role="group" aria-label="Side" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: `1px solid ${t.BORDER}` }}>
         {(['Buy', 'Sell'] as Side[]).map(x => {
           const on = x === side;
@@ -135,6 +140,16 @@ export default function TradeTicket({ pick, onPick, size, onSize }: {
             }}>{x} to Open</button>
           );
         })}
+      </div>
+      {accountId && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: `1px solid ${t.BORDER}` }}>
+          <span style={{ fontFamily: t.MONO, fontSize: 10, color: t.GRAY }}>Collateral</span>
+          <span className="tabular-nums" style={{ fontFamily: t.MONO, fontSize: 12, fontWeight: 600, color: t.WHITE }}>{fmtUsdc(account?.collateral ?? 0n)}</span>
+          <div style={{ flex: 1 }} />
+          <Button onClick={() => onFunds('deposit')} style={{ padding: '5px 12px', fontSize: 10 }}>DEPOSIT</Button>
+          <Button variant="ghost" onClick={() => onFunds('withdraw')} disabled={!account} style={{ padding: '5px 12px', fontSize: 10 }}>WITHDRAW</Button>
+        </div>
+      )}
       </div>
       <div style={{ padding: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>

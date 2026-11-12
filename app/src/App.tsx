@@ -99,7 +99,7 @@ export default function App() {
             </div>
             <Splitter dir="v" label="Resize chart and order ticket" onDelta={d => chart.nudge(d)} onReset={chart.reset} />
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
-              <TradeTicket pick={pick} onPick={setPick} size={size} onSize={setSize} />
+              <TradeTicket pick={pick} onPick={setPick} size={size} onSize={setSize} onFunds={setFunds} />
             </div>
           </div>
         </div>
