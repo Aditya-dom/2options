@@ -330,3 +330,41 @@ def test_hedge_config_is_off_without_a_key_and_strict_with_one(
         with pytest.raises(config.ConfigError, match=name):
             config.hedge_config()
         monkeypatch.delenv(name)
+
+
+def test_one_container_serves_the_app_and_the_api(app: App, tmp_path: Path) -> None:
+    site = tmp_path / "site"
+    (site / "assets").mkdir(parents=True)
+    (site / "index.html").write_text("<!doctype html><title>2Options</title>")
+    (site / "assets" / "app-1a2b.js").write_text("console.log(1)")
+    (tmp_path / "secret.txt").write_text("not served")
+    app.static_dir = site
+    app.tee = {"platform": "intel-tdx (dstack)", "quote": "04ab"}
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), make_handler(app))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{httpd.server_address[1]}"
+
+    def get(path: str):  # type: ignore[no-untyped-def]
+        try:
+            with urllib.request.urlopen(base + path, timeout=5) as r:
+                return r.status, r.headers, r.read()
+        except urllib.error.HTTPError as e:
+            return e.code, e.headers, e.read()
+
+    try:
+        status, headers, body = get("/")
+        assert status == 200 and b"2Options" in body and headers["Content-Type"] == "text/html"
+        assert headers["Cache-Control"] == "no-cache"
+        status, headers, _ = get("/assets/app-1a2b.js")
+        assert status == 200 and "immutable" in headers["Cache-Control"]
+        status, _, body = get("/health")  # API paths still answer with JSON
+        assert status == 200 and json.loads(body)["ok"] is True
+        status, _, body = get("/attestation")
+        assert json.loads(body)["tee"]["quote"] == "04ab"
+        status, _, body = get("/hedge")
+        assert status == 200 and "enabled" in json.loads(body)
+        for bad in ("/../secret.txt", "/%2e%2e/secret.txt", "/nope.js"):
+            status, _, body = get(bad)
+            assert status == 404 and b"not served" not in body
+    finally:
+        httpd.shutdown()

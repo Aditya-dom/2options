@@ -4,7 +4,8 @@
     GET /quote?series=&side=&size=&taker=   one signed quote
     GET /spot                           the contract's cached spot per underlying
     GET /funding/history?series=&limit= settlements this agent has posted, newest first
-    GET /attestation                    the agent's public key (and TEE fields when set)
+    GET /attestation                    the agent's public key, and a TDX quote bound to it
+                                        when running in a dstack TEE (tee.py)
     GET /inventory                      vault position, net delta and hedge target
     GET /hedge                          the hedger: target, venue position, gap, recent orders
     GET /health                         liveness and keeper status
@@ -18,6 +19,9 @@ Errors are non-200 with `{"error": "..."}`.
 
 The hedger runs when HYPERLIQUID_PRIVATE_KEY is set (see hedger.py).
 
+With TWOOPTIONS_STATIC_DIR set, any other path is served from that directory: the built app,
+so one container (Dockerfile at the repo root) serves the trade desk, the API and the keeper.
+
 Standard library only: one thread per request, which is plenty for an RFQ desk and keeps the
 image that runs inside the TEE small.
 """
@@ -27,6 +31,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import mimetypes
 import os
 import sys
 import threading
@@ -37,7 +42,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from . import config, inventory, near
+from . import config, inventory, near, tee
 from .chain import NS, ChainCache, rpc_viewer
 from .hedger import Hedger
 from .keeper import Keeper
@@ -49,6 +54,18 @@ from .wire import Side
 log = logging.getLogger("twooptions_agent")
 
 MAX_HISTORY = 500
+API_PATHS = frozenset(
+    {
+        "/health",
+        "/attestation",
+        "/funding/history",
+        "/chain",
+        "/spot",
+        "/inventory",
+        "/hedge",
+        "/quote",
+    }
+)
 
 
 class RateLimiter:
@@ -83,6 +100,10 @@ class App:
     limiter: RateLimiter = field(default_factory=RateLimiter)
     code_hash: str = ""
     tee_quote_url: str = ""
+    #: TDX quote bound to the agent key (tee.attest), when running in a dstack VM.
+    tee: dict[str, Any] | None = None
+    #: The built app, served for every non-API path.
+    static_dir: Path | None = None
 
     def handle(self, path: str, query: dict[str, str], client: str = "") -> tuple[int, Any]:
         try:
@@ -97,11 +118,13 @@ class App:
         if path == "/health":
             return 200, self._health()
         if path == "/attestation":
-            out = {"agent_public_key": near.public_key_str(self.quoter.key)}
+            out: dict[str, Any] = {"agent_public_key": near.public_key_str(self.quoter.key)}
             if self.code_hash:
                 out["code_hash"] = self.code_hash
             if self.tee_quote_url:
                 out["tee_quote_url"] = self.tee_quote_url
+            if self.tee is not None:
+                out["tee"] = self.tee
             return 200, out
         if path == "/funding/history":
             limit = _int_param(q, "limit", 48, 1, MAX_HISTORY)
@@ -168,6 +191,18 @@ class App:
             "hedger": self.hedger is not None,
         }
 
+    def static_file(self, path: str) -> Path | None:
+        """The file under `static_dir` for a request path, or None. Never escapes the directory."""
+        if self.static_dir is None:
+            return None
+        root = self.static_dir.resolve()
+        f = (root / path.lstrip("/")).resolve()
+        if f == root:
+            f = root / "index.html"
+        if root not in f.parents or not f.is_file():
+            return None
+        return f
+
     def cors_origin(self, origin: str | None) -> str | None:
         if "*" in self.cors:
             return "*"
@@ -205,10 +240,30 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                 self.send_header("Access-Control-Allow-Origin", allowed)
                 self.send_header("Vary", "Origin")
 
+        def _send_file(self, f: Path) -> None:
+            data = f.read_bytes()
+            self.send_response(200)
+            ctype = mimetypes.guess_type(f.name)[0] or "application/octet-stream"
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            # Vite fingerprints everything under assets/; index.html must be re-read on deploy.
+            hashed = "assets" in f.parts
+            self.send_header(
+                "Cache-Control", "public, max-age=31536000, immutable" if hashed else "no-cache"
+            )
+            self.end_headers()
+            self.wfile.write(data)
+
         def do_GET(self) -> None:  # noqa: N802 - http.server API
             url = urlsplit(self.path)
+            path = url.path.rstrip("/") or "/"
+            if path not in API_PATHS and app.static_dir is not None:
+                f = app.static_file(url.path)
+                if f is not None:
+                    self._send_file(f)
+                    return
             query = {k: v[0] for k, v in parse_qs(url.query).items()}
-            status, body = app.handle(url.path.rstrip("/") or "/", query, self.client_address[0])
+            status, body = app.handle(path, query, self.client_address[0])
             self._send(status, body)
 
         def do_OPTIONS(self) -> None:  # noqa: N802 - http.server API
@@ -249,7 +304,19 @@ def build_app(with_keeper: bool, with_hedger: bool = True) -> App:
         cors=config.cors_origins(),
         code_hash=os.environ.get("TWOOPTIONS_CODE_HASH", "").strip(),
         tee_quote_url=os.environ.get("TWOOPTIONS_TEE_QUOTE_URL", "").strip(),
+        tee=tee.attest(near.public_key_bytes(key)),
+        static_dir=_static_dir(),
     )
+
+
+def _static_dir() -> Path | None:
+    raw = os.environ.get("TWOOPTIONS_STATIC_DIR", "").strip()
+    if not raw:
+        return None
+    d = Path(raw)
+    if not (d / "index.html").is_file():
+        raise config.ConfigError(f"TWOOPTIONS_STATIC_DIR={raw} has no index.html")
+    return d
 
 
 def _warm(cache: ChainCache, stop: threading.Event) -> None:

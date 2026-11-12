@@ -6,7 +6,7 @@ Everlasting options on NEAR: calls and puts that never expire. A buyer pays a sm
 
 Built at NEAR HACKATHON, Nov 1 to 14, 2026. Tracks: **Unstoppable DeFi**, AI Security & Defense.
 
-> **Status, Nov 14.** Deployed and trading on NEAR testnet. A scripted end-to-end run passes 34 checks with real transactions. The agent hedges the vault's delta with perps on Hyperliquid testnet, and a keeper liquidation has run live. Not built: the TEE deployment of the agent and transferable position tokens. Two changes from Nov 14 (longs must pay their premium in full and can be liquidated when they cannot pay funding) are verified on a second testnet deployment; the shared one below needs a code upgrade to pick them up. The "Status" table below is the accurate picture.
+> **Status, Nov 14.** Deployed and trading on NEAR testnet. A scripted end-to-end run passes 34 checks with real transactions. The agent hedges the vault's delta with perps on Hyperliquid testnet, and a keeper liquidation has run live. The agent, keeper and app also ship as one container for a TEE (Intel TDX on Phala Cloud via dstack), with a TDX quote bound to the agent's signing key; it is built and tested locally but not deployed yet. Not built: transferable position tokens. Two changes from Nov 14 (longs must pay their premium in full and can be liquidated when they cannot pay funding) are verified on a second testnet deployment; the shared one below needs a code upgrade to pick them up. The "Status" table below is the accurate picture.
 
 | Testnet | |
 |---|---|
@@ -98,14 +98,14 @@ Controls, all in `contracts/twooptions/src/lib.rs`:
 
 ### Known weaknesses
 
-1. **A compromised agent key can still cost the vault up to 10% of its cash per hour.** Round trips are the attack: buy from the vault at the bottom of the allowed price range and sell straight back at the top. Each round trip *lowers* the vault's risk, so the vault's risk limit never stops it. Two contract rules bound it: every trade price must sit within 1% of spot, plus spot's move since, of the series' last funding mark (an option's price moves no more than spot does, so honest quotes fit), and the vault's net payout to traders per funding hour is capped at 10% of its cash at the start of that hour. The response to a leaked key is the owner pausing trading and rotating the key (`set_agent_keys`) within that hour. Running the agent in a TEE would remove the operator from the trust model; that is not built (NEAR's Shade Agent Framework is deprecated, and its listed alternative, OutLayer, cannot host a quote server).
+1. **A compromised agent key can still cost the vault up to 10% of its cash per hour.** Round trips are the attack: buy from the vault at the bottom of the allowed price range and sell straight back at the top. Each round trip *lowers* the vault's risk, so the vault's risk limit never stops it. Two contract rules bound it: every trade price must sit within 1% of spot, plus spot's move since, of the series' last funding mark (an option's price moves no more than spot does, so honest quotes fit), and the vault's net payout to traders per funding hour is capped at 10% of its cash at the start of that hour. The response to a leaked key is the owner pausing trading and rotating the key (`set_agent_keys`) within that hour. Running the agent in a TEE narrows who can misuse the key: see item 8.
 2. **Spot is agent-signed.** There is no independent oracle on chain. The feed takes the median of four venues and refuses to post when they disagree, but that logic runs off chain.
 3. **A quote is a short free option.** A taker can hold a signed quote for its lifetime (28 s with the preset) and use it only if spot moved their way. The spread is the only compensation.
 4. **Stale marks.** Between funding settlements, longs are valued at intrinsic and shorts at the last mark clamped to the band. Equity is conservative on both sides, but the LP share price can lag fast moves in time value.
 5. **The hedge is off chain and trusted.** The agent offsets the vault's net delta with a perp position on Hyperliquid (`agent/twooptions_agent/hedger.py`). That position sits in an exchange account the operator holds, not in the contract; its profit and loss does not flow into vault equity or the LP share price, and nothing on chain proves it exists. It lowers the price risk LPs carry, at a cost: each rebalance crosses the venue's spread and pays its fee, and a vault that is short options buys high and sells low as it re-hedges. To keep that cost bounded the hedger leaves a no-trade band that widens with the book's gamma (the delta drift of a 0.5% move in spot), and the vault carries the drift inside it. It only hedges delta; LPs still carry the book's gamma and vega, and the quoter's spread does not yet price in the cost of the hedge. The app shows the hedge with this caveat.
 6. **Liquidation depends on a watch list.** The contract cannot enumerate accounts, so the keeper watches the accounts the agent has quoted for.
 7. **Longs have no funding buffer.** A long becomes liquidatable only when its equity (cash plus intrinsic value, less funding owed) is negative. The cushion at that moment is the option's remaining time value, about a day of funding. If the keeper is away for longer, the unpaid funding can exceed what the position is worth and the difference falls on insurance and then the vault. A reserve of a few hours of funding in the long's requirement would close that; it changes the margin code and its two ports, and was not done.
-8. **No TEE yet.** The plan is to run the agent as a Shade Agent so the code that holds the key is attested. Today it is an ordinary process and the key is an environment variable.
+8. **The TEE attests the code, not the key's origin.** The container (`Dockerfile`, `deploy/phala/`) runs in an Intel TDX VM on Phala Cloud via dstack, the stack under NEAR AI Cloud. `/attestation` returns a TDX quote whose report data is `sha256("twooptions:agent-key:v1" || agent public key)`, so anyone can check which key a VM running a given image reported. The key itself is an encrypted secret the operator supplies, so the operator knows it, and the contract does not verify quotes; the limits in item 1 are what bound a leaked key. (NEAR's Shade Agent Framework, the original plan, is deprecated.) Not deployed yet: until it is, the agent is an ordinary process.
 9. **Margin shocks are not calibrated**, and the contract is unaudited.
 
 ## Run it
@@ -134,6 +134,12 @@ Hedging is off until `HYPERLIQUID_PRIVATE_KEY` is set in `agent/.env` (`agent/RE
 
 Then set `VITE_CONTRACT_ID`, `VITE_USDC_ID` and `VITE_AGENT_URL` in `app/.env`.
 
+**One container, for a TEE.** The root `Dockerfile` builds the app and the agent into one image: the agent serves the trade desk at `/`, its API beside it, and runs the keeper. `deploy/phala/README.md` deploys it to an Intel TDX VM on Phala Cloud; the `image` workflow publishes it to GHCR so the attested image is a CI build.
+
+```bash
+docker build -t 2options . && docker run --rm --env-file agent/.env -e TWOOPTIONS_DATA_DIR=/data -p 8787:8787 2options
+```
+
 ## Status
 
 | Piece | State |
@@ -151,5 +157,6 @@ Then set `VITE_CONTRACT_ID`, `VITE_USDC_ID` and `VITE_AGENT_URL` in `app/.env`.
 | Hedging | Ran live on Nov 14: a trader bought 2 calls on NEAR testnet and the agent bought 0.8286 ETH of perp on Hyperliquid testnet about 15 s later and flattened it with a reduce-only order when the calls were sold back. Signing is checked byte for byte against the official SDK on 48 vectors. The hedge account is the operator's and off chain (weakness 5) |
 | LP claim | Ran live on Nov 14 on the second deployment: a claim of 499.999152 USDC, requested an hour earlier, paid out in full and was cleared. `e2e_testnet.py` collects a matured claim when rerun with the same account an hour or more later |
 | Cross-chain deposit | Live 1Click quotes; delivery is mainnet only |
-| TEE (Shade Agent), NEP-245 position tokens | Not built |
+| TEE | One-container image and a TDX quote bound to the agent key (`agent/twooptions_agent/tee.py`, `deploy/phala/`). Built and run locally; quote code tested against a fake dstack socket. Not deployed to Phala yet |
+| NEP-245 position tokens | Not built |
 

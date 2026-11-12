@@ -1,0 +1,15 @@
+# Only app/ and agent/twooptions_agent go into the image. Never secrets.
+**/.env
+**/.env.*
+**/node_modules
+**/dist
+**/__pycache__
+**/.venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+.git
+contracts/target
+agent/data
+agent/tests
+app/scripts

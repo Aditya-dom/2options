@@ -1,0 +1,27 @@
+# 2Options on Phala Cloud (dstack, Intel TDX): one confidential VM serves the trade desk, the
+# agent API and the keeper on port 8787. Steps: deploy/phala/README.md.
+#
+# Pin the image by digest (the `image` workflow prints it). dstack measures this file, so the
+# attested compose hash then names exactly one image.
+services:
+  twooptions:
+    image: ghcr.io/gks2022004/2options@sha256:REPLACE_WITH_DIGEST_FROM_CI
+    restart: always
+    # The dstack guest agent's socket is owned by root; reading a quote from it needs root.
+    # The VM runs nothing else.
+    user: root
+    ports:
+      - "8787:8787"
+    volumes:
+      - /var/run/dstack.sock:/var/run/dstack.sock
+      - twooptions-data:/data
+    environment:
+      # Encrypted secrets: set them in the Phala dashboard. They are decrypted only inside the VM.
+      AGENT_PRIVATE_KEY: ${AGENT_PRIVATE_KEY}
+      KEEPER_ACCOUNT_ID: ${KEEPER_ACCOUNT_ID}
+      KEEPER_PRIVATE_KEY: ${KEEPER_PRIVATE_KEY}
+      # The digest above, so /attestation names the image next to the quote.
+      TWOOPTIONS_CODE_HASH: ${TWOOPTIONS_CODE_HASH}
+
+volumes:
+  twooptions-data:

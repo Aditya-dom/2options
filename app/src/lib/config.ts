@@ -27,7 +27,10 @@ export const config = {
   network,
   contractId: str(env.VITE_CONTRACT_ID),
   usdcId: str(env.VITE_USDC_ID),
-  agentUrl: str(env.VITE_AGENT_URL).replace(/\/+$/, ''),
+  /** `same-origin`: the agent serves this app (one container), so it is wherever the page is. */
+  agentUrl: (str(env.VITE_AGENT_URL) === 'same-origin' && typeof window !== 'undefined'
+    ? window.location.origin
+    : str(env.VITE_AGENT_URL)).replace(/\/+$/, ''),
   /** Optional `ed25519:…` key to verify quotes against; otherwise taken from the agent's /attestation. */
   agentPublicKey: str(env.VITE_AGENT_PUBLIC_KEY),
   rpcUrl: str(env.VITE_NEAR_RPC_URL) || DEFAULT_RPC[network],
