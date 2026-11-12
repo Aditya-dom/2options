@@ -21,10 +21,12 @@ export function Dialog({ title, onClose, children, width = 400 }: { title: strin
   );
 }
 
-export function Panel({ title, right, children, style, bodyStyle }: {
-  title: string; right?: ReactNode; children: ReactNode; style?: CSSProperties; bodyStyle?: CSSProperties;
+/** `bare` drops the frame and title bar, for content that sits inside a tabbed or edge-to-edge layout. */
+export function Panel({ title, right, children, style, bodyStyle, bare }: {
+  title: string; right?: ReactNode; children: ReactNode; style?: CSSProperties; bodyStyle?: CSSProperties; bare?: boolean;
 }) {
   const { t } = useTheme();
+  if (bare) return <section aria-label={title} style={{ padding: 12, minWidth: 0, ...bodyStyle }}>{children}</section>;
   return (
     <section style={{ background: t.PANEL, border: `1px solid ${t.BORDER}`, display: 'flex', flexDirection: 'column', minWidth: 0, ...style }}>
       <header style={{

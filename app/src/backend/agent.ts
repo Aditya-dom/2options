@@ -37,6 +37,7 @@ export class HttpAgent implements Agent {
       delta: r.delta,
       gamma: r.gamma,
       fundingRateHourly: big(r.funding_rate_hourly),
+      iv: r.iv,
     }));
   }
 
@@ -153,7 +154,7 @@ export function priceRow(s: Series, spot: bigint, vol: number, p: Params): Chain
   const mark = clamp(toMicros(fair.price));
   const bid = clamp(toMicros(Math.max(fair.price - half, 0)));
   const ask = clamp(toMicros(fair.price + half));
-  return { series: s.id, bid, ask, mark, delta: fair.delta, gamma: fair.gamma, fundingRateHourly: fundingRate(mark, S, K, s.kind, p) };
+  return { series: s.id, bid, ask, mark, delta: fair.delta, gamma: fair.gamma, fundingRateHourly: fundingRate(mark, S, K, s.kind, p), iv: vol };
 }
 
 /** Hourly rate as a 1e9 fraction of mark: (mark − intrinsic) / 24 per hour, capped like the contract. */

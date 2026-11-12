@@ -8,7 +8,7 @@ import { useTheme } from '../theme';
 import { fundingPerHour, type Pick } from './OptionChain';
 import { Empty, Panel } from './ui';
 
-export default function Positions({ onClose }: { onClose: (p: Pick, size: string) => void }) {
+export default function Positions({ onClose, bare }: { onClose: (p: Pick, size: string) => void; bare?: boolean }) {
   const { t } = useTheme();
   const { account, series, chain } = useProtocol();
   const accountId = useWallet(s => s.accountId);
@@ -24,7 +24,7 @@ export default function Positions({ onClose }: { onClose: (p: Pick, size: string
   );
 
   return (
-    <Panel title={`POSITIONS${positions.length ? ` · ${positions.length}` : ''}`} bodyStyle={{ padding: 0 }}>
+    <Panel bare={bare} title={`POSITIONS${positions.length ? ` · ${positions.length}` : ''}`} bodyStyle={{ padding: 0 }}>
       {!accountId ? <Empty>Connect a wallet to see positions.</Empty> : positions.length === 0 ? <Empty>No open positions.</Empty> : (
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 720 }}>

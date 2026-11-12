@@ -12,7 +12,7 @@ const TIER_LABEL: Record<HealthTier, string> = {
   healthy: 'HEALTHY', warning: 'BELOW INITIAL', 'close-only': 'CLOSE ONLY', liquidatable: 'LIQUIDATABLE',
 };
 
-export default function AccountPanel({ onFunds, onBridge }: { onFunds: (m: FundsMode) => void; onBridge: () => void }) {
+export default function AccountPanel({ onFunds, onBridge, bare }: { onFunds: (m: FundsMode) => void; onBridge: () => void; bare?: boolean }) {
   const { t } = useTheme();
   const { account, params, series, usdc } = useProtocol();
   const accountId = useWallet(s => s.accountId);
@@ -21,7 +21,7 @@ export default function AccountPanel({ onFunds, onBridge }: { onFunds: (m: Funds
 
   if (!accountId) {
     return (
-      <Panel title="ACCOUNT">
+      <Panel bare={bare} title="ACCOUNT">
         <div style={{ display: 'grid', gap: 10 }}>
           <div style={{ fontFamily: t.MONO, fontSize: 11, color: t.GRAY, lineHeight: 1.5 }}>Connect a NEAR wallet to deposit USDC and trade.</div>
           <Button onClick={signIn}>CONNECT WALLET</Button>
@@ -41,7 +41,7 @@ export default function AccountPanel({ onFunds, onBridge }: { onFunds: (m: Funds
   const pos = (bps: bigint) => Math.max(0, Math.min(100, ((Number(bps) / 10_000 - 1) / 2) * 100));
 
   return (
-    <Panel title="ACCOUNT" right={tier && <Badge color={tierColor}>{TIER_LABEL[tier]}</Badge>}>
+    <Panel bare={bare} title="ACCOUNT" right={tier && <Badge color={tierColor}>{TIER_LABEL[tier]}</Badge>}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
         <Stat label="Equity" value={account?.equity != null ? fmtUsdc(account.equity) : account ? '—' : fmtUsdc(0n)} />
         <Stat label="Margin used" value={account?.requirement != null ? fmtUsdc(account.requirement) : '—'}

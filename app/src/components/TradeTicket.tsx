@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import type { SignedQuote } from '../backend/types';
 import { healthTier, seriesLabel, type Side } from '../lib/contract';
 import { friendlyError } from '../lib/errors';
+import { tradeCash } from '../lib/margin';
 import { previewTrade } from '../lib/preview';
 import { DEFAULT_VOL, everlasting } from '../lib/pricing';
 import {
-  big, fmtPremium, fmtSignedUsdc, fmtSize, fmtUsdc, NS_PER_MS, parseUnits, SIZE_SCALE, SPOT_SCALE, USDC_UNIT,
+  big, fmtPremium, fmtSignedUsdc, fmtSize, fmtSpot, fmtUsdc, NS_PER_MS, parseUnits, SIZE_SCALE, SPOT_SCALE, USDC_UNIT,
 } from '../lib/units';
 import { useNow, useProtocol } from '../hooks/useProtocol';
 import { BAD_SIGNATURE, checkQuote } from '../hooks/useAgentTrust';
@@ -32,6 +33,7 @@ export default function TradeTicket({ pick, onPick, size, onSize }: {
   const [quote, setQuote] = useState<SignedQuote | null>(null);
   const [busy, setBusy] = useState<'quote' | 'submit' | null>(null);
   const [quoteErr, setQuoteErr] = useState<string | null>(null);
+  const [view, setView] = useState<'Payoff' | 'Greeks'>('Payoff');
 
   const seriesMap = useMemo(() => new Map(series.map(s => [s.id, s])), [series]);
   const s = pick ? seriesMap.get(pick.series) : undefined;
@@ -72,8 +74,8 @@ export default function TradeTicket({ pick, onPick, size, onSize }: {
 
   if (!pick || !s) {
     return (
-      <Panel title="TRADE TICKET">
-        <Empty>Pick a bid or ask in the chain to start.</Empty>
+      <Panel bare title="ORDER">
+        <Empty>Click a bid or an ask in the chain.</Empty>
       </Panel>
     );
   }
@@ -81,6 +83,13 @@ export default function TradeTicket({ pick, onPick, size, onSize }: {
   const side = pick.side;
   const sideColor = side === 'Buy' ? t.GREEN : t.RED;
   const fundPerHour = row && sizeOk ? (fundingPerHour(row) * sizeUnits!) / SIZE_SCALE : null;
+  const cash = price != null && sizeOk ? tradeCash(side, price, sizeUnits!) : null;
+  // Spot at which intrinsic value equals the premium (before funding).
+  const breakEven = price != null ? (s.kind === 'Call' ? s.strike + price * 100n : s.strike - price * 100n) : null;
+  // A put's payoff stops at spot = 0: strike × size, less the premium either way.
+  const bound = cash != null ? (s.strike / 100n) * sizeUnits! / SIZE_SCALE - cash : null;
+  const sgn = side === 'Buy' ? 1 : -1;
+  const contracts = sizeOk ? Number(sizeUnits) / Number(SIZE_SCALE) : 0;
   const tier = preview?.ratioAfterBps != null && params ? healthTier(preview.ratioAfterBps, params) : null;
   const blocked = !agent.canTrade
     ? 'No agent is configured, so quotes cannot be signed. Set VITE_AGENT_URL once Gaurav\'s agent is up.'
@@ -113,30 +122,40 @@ export default function TradeTicket({ pick, onPick, size, onSize }: {
   };
 
   return (
-    <Panel title="TRADE TICKET" right={<span style={{ color: t.WHITE, letterSpacing: 0 }}>{seriesLabel(s)}</span>}>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 12 }}>
-        {(['Buy', 'Sell'] as Side[]).map(x => (
-          <Button key={x} variant={x === 'Buy' ? 'buy' : 'sell'} onClick={() => onPick({ series: pick.series, side: x })}
-            style={{ opacity: x === side ? 1 : 0.4 }}>
-            {x.toUpperCase()}
-          </Button>
-        ))}
+    <Panel bare title="ORDER" bodyStyle={{ padding: 0 }}>
+      <div role="group" aria-label="Side" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderBottom: `1px solid ${t.BORDER}` }}>
+        {(['Buy', 'Sell'] as Side[]).map(x => {
+          const on = x === side;
+          const c = x === 'Buy' ? t.GREEN : t.RED;
+          return (
+            <button key={x} aria-pressed={on} onClick={() => onPick({ series: pick.series, side: x })} style={{
+              fontFamily: t.MONO, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', padding: '10px 0', cursor: 'pointer', border: 'none',
+              color: on ? c : t.GRAY, background: on ? (x === 'Buy' ? t.GREEN_BG : t.RED_BG) : 'transparent',
+              boxShadow: on ? `inset 0 -2px 0 ${c}` : 'none',
+            }}>{x} to Open</button>
+          );
+        })}
+      </div>
+      <div style={{ padding: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+        <span style={{ fontFamily: t.MONO, fontSize: 12, fontWeight: 700, color: t.WHITE }}>{seriesLabel(s)}</span>
+        <span style={{ fontFamily: t.MONO, fontSize: 10, color: t.DIM }}>EVERLASTING</span>
       </div>
 
-      <label style={{ fontFamily: t.MONO, fontSize: 9, letterSpacing: '0.14em', color: t.DIM }}>SIZE (CONTRACTS)</label>
+      <label style={{ fontFamily: t.MONO, fontSize: 10, color: t.GRAY }}>Size (contracts)</label>
       <div style={{ marginTop: 4, marginBottom: 12 }}>
         <AmountInput ariaLabel="Size in contracts" value={size} onChange={onSize} placeholder="1" />
         {size !== '' && !sizeOk && <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.RED, marginTop: 4 }}>Minimum 0.001, up to 6 decimals.</div>}
       </div>
 
       <Row label={live ? 'Firm price' : 'Indicative price'} value={price != null ? fmtPremium(price) : '—'} color={live ? sideColor : undefined} />
-      {preview && <Row label={side === 'Buy' ? 'Premium you pay' : 'Premium you receive'} value={fmtUsdc(preview.cash)} />}
+      {cash != null && <Row label={side === 'Buy' ? 'Max Cost' : 'Premium Received'} value={fmtUsdc(cash)} />}
       {fundPerHour != null && (
         <Row label="Funding per hour" value={(side === 'Buy' ? 'pay ' : 'receive ') + fmtPremium(fundPerHour < 0n ? -fundPerHour : fundPerHour)} />
       )}
-      {preview && (
+      {preview && accountId && (
         <>
-          <Row label="Account margin after" value={fmtUsdc(preview.reqAfter)} />
+          <Row label="Margin Required" value={fmtUsdc(preview.reqAfter)} />
           <Row
             label="Health after"
             value={preview.ratioAfterBps == null ? 'no requirement' : `${(Number(preview.ratioAfterBps) / 10_000).toFixed(2)}×`}
@@ -173,14 +192,42 @@ export default function TradeTicket({ pick, onPick, size, onSize }: {
         )}
       </div>
 
-      {payoff.length > 0 && spot != null && (
-        <div style={{ marginTop: 14 }}>
-          <div style={{ fontFamily: t.MONO, fontSize: 9, letterSpacing: '0.14em', color: t.DIM, marginBottom: 4 }}>
-            INSTANT P&L VS SPOT (BEFORE FUNDING)
-          </div>
-          <PayoffChart data={payoff} spot={Number(spot) / Number(SPOT_SCALE)} />
-        </div>
-      )}
+      </div>
+
+      <div role="tablist" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', borderTop: `1px solid ${t.LINE}`, borderBottom: `1px solid ${t.BORDER}` }}>
+        {(['Payoff', 'Greeks'] as const).map(x => (
+          <button key={x} role="tab" aria-selected={view === x} onClick={() => setView(x)} style={{
+            fontFamily: t.MONO, fontSize: 10, letterSpacing: '0.06em', padding: '8px 0', cursor: 'pointer', border: 'none', background: 'transparent',
+            color: view === x ? t.WHITE : t.GRAY, boxShadow: view === x ? `inset 0 -2px 0 ${t.ACCENT}` : 'none',
+          }}>{x}</button>
+        ))}
+      </div>
+      <div style={{ padding: 12 }}>
+        {view === 'Payoff' ? (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 8 }}>
+              {[
+                ['Max Loss', side === 'Buy' ? (cash != null ? fmtUsdc(cash) : '—') : s.kind === 'Put' && bound != null ? fmtUsdc(bound) : 'Unlimited', t.RED],
+                ['Break Even', breakEven != null ? fmtSpot(breakEven) : '—', t.WHITE],
+                ['Max Profit', side === 'Sell' ? (cash != null ? fmtUsdc(cash) : '—') : s.kind === 'Put' && bound != null ? fmtUsdc(bound) : 'Unlimited', t.GREEN],
+              ].map(([k, v, c]) => (
+                <div key={k}>
+                  <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.GRAY }}>{k}</div>
+                  <div className="tabular-nums" style={{ fontFamily: t.MONO, fontSize: 12, fontWeight: 600, color: c, marginTop: 2 }}>{v}</div>
+                </div>
+              ))}
+            </div>
+            {payoff.length > 0 && spot != null && <PayoffChart data={payoff} spot={Number(spot) / Number(SPOT_SCALE)} />}
+          </>
+        ) : row && sizeOk ? (
+          <>
+            <Row label="Delta" value={(sgn * row.delta * contracts).toFixed(3)} />
+            <Row label="Gamma" value={(sgn * row.gamma * contracts).toFixed(5)} />
+            {row.iv != null && <Row label="Implied vol" value={`${(row.iv * 100).toFixed(1)}%`} />}
+            <Row label="Funding rate per hour" value={`${(Number(row.fundingRateHourly) / 1e7).toFixed(3)}%`} />
+          </>
+        ) : <Empty>—</Empty>}
+      </div>
     </Panel>
   );
 }

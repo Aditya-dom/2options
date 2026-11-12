@@ -80,8 +80,8 @@ export default function VaultPage({ onFunds }: { onFunds: (m: FundsMode) => void
           </div>
           <div style={{ marginTop: 12 }}>
             <Note>
-              The vault is the counterparty to every trade and earns the spread and hourly funding. The agent hedges its net delta with perps on Hyperliquid;
-              that hedge P&L is held off-chain and is <b>not</b> included in the share price above.
+              The vault is the counterparty to every trade and earns the spread and hourly funding. Its net delta is <b>not hedged</b> yet:
+              LPs carry that price risk. The agent reports the perp position that would offset it.
             </Note>
           </div>
         </Panel>

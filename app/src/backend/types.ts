@@ -58,6 +58,8 @@ export interface ChainRowJson {
   gamma: number;
   /** 1e9-scaled fraction of mark per hour, signed (same scale as FundingUpdate.rate). */
   funding_rate_hourly: string;
+  /** Annualised implied vol the agent priced with, e.g. 0.61. */
+  iv?: number;
 }
 
 export interface ChainRow {
@@ -68,6 +70,7 @@ export interface ChainRow {
   delta: number;
   gamma: number;
   fundingRateHourly: bigint;
+  iv?: number;
 }
 
 export interface SignedQuote {

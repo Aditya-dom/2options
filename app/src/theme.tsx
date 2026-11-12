@@ -13,11 +13,13 @@ const DARK = {
   ORANGE: '#f5a623', YELLOW: '#f0c000', PURPLE: '#9d99ff',
   MONO: "'JetBrains Mono', 'SFMono-Regular', 'Menlo', monospace",
   SANS: "'Outfit', system-ui, sans-serif",
+  /** Hard rule between panels: white on dark, black on light. */
+  LINE: '#fff',
 };
 
 const LIGHT: typeof DARK = {
-  BG: '#fff', SURFACE: '#fff', PANEL: '#fafafa',
-  BORDER: '#d0cdc5', BORDER2: '#c0bdb5', MUTED: '#f4f4f2',
+  BG: '#fff', SURFACE: '#fff', PANEL: '#fff',
+  BORDER: '#d0cdc5', BORDER2: '#c0bdb5', MUTED: '#fafafa',
   WHITE: '#111', GRAY: '#555', DIM: '#888',
   ACCENT: '#00a0b8', ACCENT_DIM: '#e0f5fa', ACCENT_BG: 'rgba(0,160,184,0.08)',
   GREEN: '#00956a', GREEN_DIM: '#d5f2e8', GREEN_BG: 'rgba(0,149,106,0.08)',
@@ -25,15 +27,16 @@ const LIGHT: typeof DARK = {
   ORANGE: '#c08000', YELLOW: '#a88800', PURPLE: '#6e6ac8',
   MONO: DARK.MONO,
   SANS: DARK.SANS,
+  LINE: '#000',
 };
 
 export type ThemeTokens = typeof DARK;
 export type ThemeMode = 'light' | 'dark';
 
-const useThemeStore = create<{ mode: ThemeMode; toggle: () => void }>()(
+export const useThemeStore = create<{ mode: ThemeMode; toggle: () => void }>()(
   persist(
-    set => ({ mode: 'dark', toggle: () => set(s => ({ mode: s.mode === 'light' ? 'dark' : 'light' })) }),
-    { name: 'perennia-theme' },
+    set => ({ mode: 'light', toggle: () => set(s => ({ mode: s.mode === 'light' ? 'dark' : 'light' })) }),
+    { name: 'perennia-theme-v2' },
   ),
 );
 
@@ -53,6 +56,9 @@ export function ThemeSync() {
     r.setProperty('--border', t.BORDER);
     r.setProperty('--text', t.WHITE);
     r.setProperty('--accent', t.ACCENT);
+    r.setProperty('--line', t.LINE);
+    r.setProperty('--green', t.GREEN);
+    r.setProperty('--red', t.RED);
     document.body.style.background = t.BG;
     document.body.style.color = t.WHITE;
   }, [mode, t]);
