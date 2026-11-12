@@ -4,6 +4,7 @@ import { href, TABS, type Tab } from '../hooks/useRoute';
 import { useWallet } from '../hooks/useWallet';
 import { useTheme } from '../theme';
 import AgentBadge from './AgentBadge';
+import FaucetButton from './FaucetButton';
 import { Badge } from './ui';
 
 /** Layout and styling follow the earlier Pacifica frontend's TradeHeader. */
@@ -42,6 +43,7 @@ export default function Header({ tab }: { tab: Tab }) {
         <div style={{ ...cell, padding: '0 10px' }}>
           <Badge color={isDemo ? t.ORANGE : t.ACCENT}>{isDemo ? 'DEMO' : config.network.toUpperCase()}</Badge>
           <AgentBadge />
+          <FaucetButton badge />
         </div>
         <div style={{ ...cell, padding: '0 8px' }}>
           <button onClick={toggle} aria-label="Toggle theme" style={{ display: 'flex', background: 'transparent', border: 'none', padding: 0, color: t.GRAY, cursor: 'pointer' }}>

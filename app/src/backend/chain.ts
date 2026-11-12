@@ -88,17 +88,19 @@ export class ChainBackend implements Backend {
 
   /** The test token's `faucet_status`; null when the token has no such view (real USDC). */
   async faucetStatus(accountId: string): Promise<FaucetStatus | null> {
-    if (this.noFaucet) return null;
+    if (Date.now() < this.noFaucetUntil) return null;
     try {
       const r = await this.view<{ amount: string; next_claim_ns: string | null }>('faucet_status', { account_id: accountId }, this.usdcId);
       return { amount: big(r.amount), nextClaimMs: r.next_claim_ns == null ? null : Number(BigInt(r.next_claim_ns) / 1_000_000n) };
     } catch (e) {
-      if (/MethodNotFound|MethodResolveError/i.test(String(e))) this.noFaucet = true;
+      // Real USDC has no faucet: skip the view for a while rather than for good, so a token
+      // upgraded while the page is open shows its faucet within minutes.
+      if (/MethodNotFound|MethodResolveError/i.test(String(e))) this.noFaucetUntil = Date.now() + 120_000;
       return null;
     }
   }
 
-  private noFaucet = false;
+  private noFaucetUntil = 0;
 
   async submit(accountId: string, call: Call): Promise<CallResult> {
     const { receiverId, actions } = await this.toTx(accountId, call);
