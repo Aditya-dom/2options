@@ -8,8 +8,8 @@ Built at NEAR HACKATHON, Nov 1 to 14, 2026. Tracks: **Unstoppable DeFi**, AI Sec
 
 | Testnet | |
 |---|---|
-| Contract | `twooptions.twooptions-kjpnv.testnet` |
-| Test USDC (open faucet, worthless) | `usdc.twooptions-kjpnv.testnet` |
+| Contract | `contract.twooptions.testnet` |
+| Test USDC (open faucet, worthless) | `usdc.twooptions.testnet` |
 
 ## Prior work, disclosed
 
