@@ -223,13 +223,13 @@ export default function StrategyBuilder() {
                                   const target = seriesFor(s.strike, kind);
                                   const on = s.kind === kind;
                                   return (
-                                    <button key={kind} aria-pressed={on} disabled={!target} title={kind}
+                                    <button key={kind} aria-pressed={on} disabled={!target} title={kind === 'Call' ? 'Call: pays if ETH ends above the strike' : 'Put: pays if ETH ends below the strike'}
                                       onClick={() => target && !on && edit(i, { series: target.id })}
                                       style={{
-                                        fontFamily: t.MONO, fontSize: 10, fontWeight: 700, width: 26, padding: '4px 0', cursor: target ? 'pointer' : 'not-allowed',
+                                        fontFamily: t.MONO, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', width: 42, padding: '4px 0', cursor: target ? 'pointer' : 'not-allowed',
                                         color: on ? t.ACCENT : t.GRAY, background: on ? t.ACCENT_BG : 'transparent',
                                         border: `1px solid ${on ? t.ACCENT : t.BORDER}`, marginLeft: kind === 'Put' ? -1 : 0,
-                                      }}>{kind === 'Call' ? 'C' : 'P'}</button>
+                                      }}>{kind.toUpperCase()}</button>
                                   );
                                 })}
                               </div>
