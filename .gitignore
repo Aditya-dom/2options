@@ -1,0 +1,64 @@
+# Secrets
+.env
+.env.*
+!.env.example
+.keys/
+*.pem
+*.key
+
+# Node / bun
+node_modules/
+dist/
+build/
+.vite/
+.turbo/
+.next/
+*.tsbuildinfo
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Local databases / runtime data
+*.sqlite
+*.sqlite3
+db-data/
+pgdata/
+
+# Legacy TS backend — kept on disk for reference, not versioned
+archive/
+
+# Rust / maturin build artifacts
+perennia_math/target/
+*.so
+*.whl
+.claude/
+
+# Internal docs / AI-authored plans + specs — not for public repo
+docs/
