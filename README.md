@@ -1,6 +1,6 @@
 <p align="center"><img src="app/public/logo-full.png" alt="2Options" width="220" /></p>
 
-# 2options on NEAR
+# 2Options on NEAR
 
 Everlasting options on NEAR: calls and puts that never expire. A buyer pays a small funding amount every hour instead of buying a dated contract and rolling it. A NEAR contract holds all the money and enforces margin. An off-chain agent proposes prices by signing quotes, and the contract checks every one of them.
 
@@ -46,7 +46,7 @@ flowchart LR
     A[Agent<br/>pricing + signing] -->|2. signed quote| T
     T -->|3. trade quote, signature| C
     U[USDC token<br/>NEP-141] -->|ft_on_transfer<br/>deposit / lp| C
-    C[2options contract<br/>custody, margin, funding,<br/>liquidation] -->|ft_transfer<br/>withdraw / claim| U
+    C[2Options contract<br/>custody, margin, funding,<br/>liquidation] -->|ft_transfer<br/>withdraw / claim| U
     K[Keeper] -->|post_spot every 5 s<br/>settle_funding hourly<br/>liquidate| C
     A -. signs spot and<br/>funding updates .-> K
     V[Price venues<br/>Coinbase, Kraken,<br/>Binance, Hyperliquid] --> K

@@ -1,6 +1,6 @@
 # twooptions-agent
 
-The off-chain half of 2options on NEAR: it prices the option chain, signs quotes, posts spot, settles hourly funding and scans for liquidations. The contract in `contracts/twooptions` verifies every signature and bounds every number, so this process can propose prices but cannot move funds.
+The off-chain half of 2Options on NEAR: it prices the option chain, signs quotes, posts spot, settles hourly funding and scans for liquidations. The contract in `contracts/twooptions` verifies every signature and bounds every number, so this process can propose prices but cannot move funds.
 
 Standard library plus `cryptography`. No web framework and no NEAR SDK, so the image that runs inside a TEE stays small.
 
@@ -23,7 +23,7 @@ From the repo root the same things are `make near-bootstrap`, `make near-agent` 
 1. Create a testnet account and fund it (about 11 NEAR: the two contracts need roughly 8 NEAR of storage). This is the **owner**.
 2. `admin keygen` twice: one key for the agent, one for the keeper if it is a separate account. The keeper can be the owner account on testnet.
 3. Fill in `agent/.env`: `OWNER_*`, `AGENT_PRIVATE_KEY`, `KEEPER_*`, and pick `TWOOPTIONS_CONTRACT_ID=contract.<owner>` and `TWOOPTIONS_USDC_ID=usdc.<owner>`.
-4. `make near-wasm`, then `make near-bootstrap`. It deploys the test USDC and 2options, applies the parameter preset, registers the contract with the token, lists a strike grid around the live spot, seeds LP liquidity and gives the keeper a contract balance. Rerunning it skips what is already done.
+4. `make near-wasm`, then `make near-bootstrap`. It deploys the test USDC and 2Options, applies the parameter preset, registers the contract with the token, lists a strike grid around the live spot, seeds LP liquidity and gives the keeper a contract balance. Rerunning it skips what is already done.
 5. `make near-agent`. `GET /health` shows the spot age and the keeper's last actions.
 6. Point the app at it: `VITE_CONTRACT_ID`, `VITE_USDC_ID`, `VITE_AGENT_URL=http://localhost:8787`. Anyone can get test USDC with `admin mint --to <account> --amount 10000`.
 
@@ -90,7 +90,7 @@ This file is a port of pre-hackathon code ([`core/black_scholes.py`](https://git
 make near-fixtures    # regenerates all three after changing contract types, margin or the encoders
 ```
 
-- `tests/fixtures/wire_vectors.json` from `contracts/twooptions/examples/wire_vectors.rs`, which also runs the signatures through `post_spot` and `settle_funding` on a real `2options` instance.
+- `tests/fixtures/wire_vectors.json` from `contracts/twooptions/examples/wire_vectors.rs`, which also runs the signatures through `post_spot` and `settle_funding` on a real `2Options` instance.
 - `app/src/lib/fixtures/margin_vectors.json` from `contracts/twooptions/examples/margin_vectors.rs`; `tests/test_margin.py` reads the same file as the app.
 - `tests/fixtures/near_tx_vectors.json` from `app/scripts/near_tx_vectors.ts`, which encodes and signs the same transactions with `@near-js/transactions`.
 

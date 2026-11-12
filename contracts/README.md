@@ -1,4 +1,4 @@
-# 2options contract
+# 2Options contract
 
 Everlasting-options vault and settlement contract for NEAR. Source: [twooptions/src](twooptions/src).
 

@@ -1,4 +1,4 @@
-//! 2options: an everlasting-options vault and settlement contract for NEAR.
+//! 2Options: an everlasting-options vault and settlement contract for NEAR.
 //!
 //! The contract holds all USDC. Prices come from an off-chain agent that signs quotes, spot
 //! updates and funding updates with an ed25519 key registered here. The contract verifies

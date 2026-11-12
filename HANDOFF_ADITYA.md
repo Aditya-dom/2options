@@ -16,7 +16,7 @@ The original handoff below is unchanged; where it says something is not built, t
 
 | Your ask (HANDOFF_GAURAV.md) | State |
 |---|---|
-| §1.1 Deploy 2options | Tooling done, **not run**: `make near-wasm && make near-bootstrap` (`agent/twooptions_agent/admin.py`). Needs a funded testnet owner account, about 11 NEAR. |
+| §1.1 Deploy 2Options | Tooling done, **not run**: `make near-wasm && make near-bootstrap` (`agent/twooptions_agent/admin.py`). Needs a funded testnet owner account, about 11 NEAR. |
 | §1.2 Which USDC, how to get it | A mintable test token, `contracts/test-usdc`, deployed by bootstrap at `usdc.<owner>`. Anyone can call `mint`; `admin mint --to <you> --amount 10000` does it for you. |
 | §1.3 Register the contract with USDC | Bootstrap step `register`. |
 | §1.4 `add_series` | Bootstrap step `add-series`: the at-the-money strike and two either side, about 2.5% of spot apart, calls and puts, around the live spot. |
@@ -70,7 +70,7 @@ An options venue on NEAR where the **contract holds the money** and an **agent s
 
 ```
 Trader ──ask for price──▶ Agent (signs quote) ──signed quote──▶ Trader
-Trader ──submit signed quote──▶ 2options contract (verifies, settles, tracks margin)
+Trader ──submit signed quote──▶ 2Options contract (verifies, settles, tracks margin)
 Agent ──every ~10s──▶ post_spot        Agent ──hourly──▶ settle_funding
 Agent ──reads vault delta──▶ hedges on Hyperliquid testnet
 ```

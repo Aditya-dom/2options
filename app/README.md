@@ -1,6 +1,6 @@
-# 2options app (NEAR)
+# 2Options app (NEAR)
 
-React + Vite frontend for the 2options contract (`contracts/twooptions`). It replaces our earlier Solana/Privy frontend (see the README's prior-work section).
+React + Vite frontend for the 2Options contract (`contracts/twooptions`). It replaces our earlier Solana/Privy frontend (see the README's prior-work section).
 
 ```bash
 cd app

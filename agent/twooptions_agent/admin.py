@@ -305,7 +305,7 @@ def _keygen() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="2options testnet setup")
+    p = argparse.ArgumentParser(description="2Options testnet setup")
     p.add_argument("--env-file", default=".env")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("keygen", help="print a new ed25519 key pair")

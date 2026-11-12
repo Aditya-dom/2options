@@ -1,4 +1,4 @@
-# 2options on NEAR — Hackathon Plan
+# 2Options on NEAR — Hackathon Plan
 
 > **Everlasting options, deposited from any chain, priced and hedged by a verifiable AI agent running in secure hardware (TEE), with settlement on a NEAR smart contract.**
 
@@ -35,7 +35,7 @@
 
 The hackathon rules say: **"Projects must be built during the hackathon period."**
 
-2options already exists as a Solana/Pacifica project (it was a Pacifica hackathon entry). Submitting a port of it risks disqualification, and the AI judges will read the git history.
+2Options already exists as a Solana/Pacifica project (it was a Pacifica hackathon entry). Submitting a port of it risks disqualification, and the AI judges will read the git history.
 
 **Plan:**
 
@@ -50,7 +50,7 @@ The hackathon rules say: **"Projects must be built during the hackathon period."
 
 ```mermaid
 flowchart LR
-    subgraph Today["2options today (Solana / Pacifica)"]
+    subgraph Today["2Options today (Solana / Pacifica)"]
         U[User<br/>Phantom / Privy] -->|USDP SPL transfer| CW[Per-user Privy<br/>custodial wallet]
         CW -.->|backend credits| PG[(Postgres<br/>ENTIRE options book,<br/>balances, funding)]
         API[FastAPI + engines] --> PG
@@ -69,7 +69,7 @@ flowchart LR
 | Frontend | ~8k TS | Real chain, order, strategy and payoff UI | Components stay; the wallet layer is replaced |
 | Smart contracts | none | — | **Build new** |
 
-**The weakness to fix:** today 2options is a centralized exchange with a crypto deposit address. The NEAR version moves trust from the server to **the chain and verifiable hardware**.
+**The weakness to fix:** today 2Options is a centralized exchange with a crypto deposit address. The NEAR version moves trust from the server to **the chain and verifiable hardware**.
 
 ---
 
@@ -115,7 +115,7 @@ flowchart TB
     end
 
     subgraph TEE["TEE (Phala / dstack)"]
-        AG["<b>2options Agent</b><br/>quote engine · risk engine<br/>funding keeper · hedge engine"]
+        AG["<b>2Options Agent</b><br/>quote engine · risk engine<br/>funding keeper · hedge engine"]
     end
 
     subgraph Hedge["Hedge venue"]
@@ -174,7 +174,7 @@ flowchart LR
 ```
 twooptions/
 ├── contracts/
-│   ├── 2options/          # main vault + options + margin contract (Rust, near-sdk)
+│   ├── 2Options/          # main vault + options + margin contract (Rust, near-sdk)
 │   ├── agent/             # Shade Agent contract (attestation + chain-sig gate)
 │   └── math/              # no_std fixed-point port of the earlier Rust math kernel
 ├── agent/                 # off-chain engine (Python or TS) running inside the TEE
@@ -306,7 +306,7 @@ flowchart LR
 
 ```mermaid
 classDiagram
-    class 2options {
+    class 2Options {
         owner: AccountId
         usdc: AccountId
         agent_contract: AccountId
@@ -336,9 +336,9 @@ classDiagram
         total_shares: u128  (pUSDC)
         net_delta: i128
     }
-    2options --> Account
-    2options --> Series
-    2options --> Vault
+    2Options --> Account
+    2Options --> Series
+    2Options --> Vault
 ```
 
 ### 6.2 Public methods
@@ -367,7 +367,7 @@ classDiagram
 
 ```mermaid
 flowchart LR
-    subgraph Agent["2options Agent (inside TEE)"]
+    subgraph Agent["2Options Agent (inside TEE)"]
         F1[Spot feed<br/>Pyth / Binance WS] --> VS[Vol surface<br/>EWMA + Deribit IV]
         VS --> QE[Quote engine<br/>everlasting 50-term]
         QE --> RFQ[RFQ server<br/>ed25519 signer]
@@ -384,7 +384,7 @@ flowchart LR
 
 Porting map from the old codebase:
 
-| Old (2options) | New (agent) | Effort |
+| Old (2Options) | New (agent) | Effort |
 |---|---|---|
 | `core/everlasting.py`, `black_scholes.py`, `vol_surface.py` | `agent/pricing/` | Low (rewrite or disclose) |
 | `engine/quote_engine.py` | `agent/quoter/` + signing | Medium |
@@ -435,7 +435,7 @@ flowchart TB
 
 ```mermaid
 gantt
-    title 2options on NEAR, build plan
+    title 2Options on NEAR, build plan
     dateFormat  YYYY-MM-DD
     axisFormat  %b %d
 

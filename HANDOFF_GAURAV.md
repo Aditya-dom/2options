@@ -31,7 +31,7 @@ Nothing has been tested against a deployed contract, because nothing is deployed
 |---|---|---|
 | 1 | **Deploy `twooptions` to testnet** and send me the account id. | `VITE_CONTRACT_ID` |
 | 2 | **Which USDC token** (account id), and **how I get test USDC** for my account (mint method, faucet, or send me some). | `VITE_USDC_ID`. The app reads `ft_balance_of`, `storage_balance_of` and `storage_balance_bounds` on it. |
-| 3 | **Register the 2options contract with the USDC token** (`storage_deposit` for the contract account). | Otherwise `ft_transfer_call` fails inside the token and no deposit reaches `ft_on_transfer`. |
+| 3 | **Register the 2Options contract with the USDC token** (`storage_deposit` for the contract account). | Otherwise `ft_transfer_call` fails inside the token and no deposit reaches `ft_on_transfer`. |
 | 4 | **`add_series` for the strike grid.** See the decision in §2 before choosing strikes. | The chain renders whatever `list_series` returns. |
 | 5 | **Keeper posting `post_spot`** every ≤10 s for every underlying with a series (`max_spot_age` is 30 s). | Without a fresh spot, `get_account` and `get_vault` return null equity and every trade or LP action reverts with `spot price is stale`. |
 | 6 | **Keeper running `settle_funding`** hourly per series. | Funding page and index. |
@@ -109,7 +109,7 @@ The badge checks `agent_public_key` against your `is_agent_key` view and verifie
 
 ### Signing helpers you can use
 
-`agent/twooptions_agent/wire.py` encodes `Quote`, `SpotUpdate` and `FundingUpdate` and signs them. Its tests compare bytes, digests and signatures against `contracts/twooptions/examples/wire_vectors.rs`, which uses your types and runs the signatures through `post_spot` and `settle_funding` on a real `2options` instance. If your quoter is in Python, import it; if not, the fixture (`agent/tests/fixtures/wire_vectors.json`) is a ready-made test for any language. The app's TypeScript check uses the same fixture.
+`agent/twooptions_agent/wire.py` encodes `Quote`, `SpotUpdate` and `FundingUpdate` and signs them. Its tests compare bytes, digests and signatures against `contracts/twooptions/examples/wire_vectors.rs`, which uses your types and runs the signatures through `post_spot` and `settle_funding` on a real `2Options` instance. If your quoter is in Python, import it; if not, the fixture (`agent/tests/fixtures/wire_vectors.json`) is a ready-made test for any language. The app's TypeScript check uses the same fixture.
 
 ### Spot feed (#22) and inventory (#24)
 
@@ -126,7 +126,7 @@ Live ETH is about $2,110 (Nov 10), not the $3,500 in the handoff. Strikes should
    - CORS allows any origin, so the app calls it directly. Delivery takes about 22–35 s after the deposit confirms.
    - I deliver USDC to the **user's own NEAR wallet** and then run the normal deposit. 1Click's `customRecipientMsg` could `ft_transfer_call` straight into twooptions, but `ft_on_transfer` credits `sender_id`, which would be the intents contract, not the user.
    - **Decision needed:** where do we demo #33?
-     - (a) 2options on mainnet with small caps;
+     - (a) 2Options on mainnet with small caps;
      - (b) show the swap landing in a mainnet wallet, with the deposit on testnet shown separately;
      - (c) add `msg = "deposit:<account_id>"` to `ft_on_transfer` to credit a named account, which is safe because the sender pays.
 3. **Agent API:** keep your §5, with the units and two additions in §4 above.

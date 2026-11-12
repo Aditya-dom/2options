@@ -19,8 +19,8 @@ export default function Header({ tab }: { tab: Tab }) {
           display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', borderRight: `1px solid ${t.LINE}`,
           flexShrink: 0, background: t.SURFACE, textDecoration: 'none',
         }}>
-          <img src="/logo.png" alt="2options" style={{ width: 24, height: 24, borderRadius: 3 }} />
-          <span className="header-brand" style={{ fontFamily: t.MONO, fontSize: 13, fontWeight: 700, color: t.WHITE, letterSpacing: '0.14em' }}>2OPTIONS</span>
+          <img src="/logo.png" alt="2Options" style={{ width: 24, height: 24, borderRadius: 3 }} />
+          <span className="header-brand" style={{ fontFamily: t.MONO, fontSize: 13, fontWeight: 700, color: t.WHITE, letterSpacing: '0.14em' }}>2Options</span>
         </a>
 
         <nav style={{ display: 'flex' }} aria-label="Screens">

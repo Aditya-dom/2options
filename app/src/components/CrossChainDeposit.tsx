@@ -184,7 +184,7 @@ export default function CrossChainDeposit({ onClose }: { onClose: () => void }) 
         <div style={mono}>{STATUS_TEXT[status]}{refundReason ? ` (${refundReason})` : ''}</div>
         <Row label={status === 'SUCCESS' ? 'Delivered' : 'Expected (minimum)'} value={fmtUsdc(delivered ?? big(pending.amountOut))} />
         {status === 'SUCCESS' && (
-          <Button onClick={depositNow} disabled={busy}>{busy ? 'CONFIRMING…' : `DEPOSIT ${fmtUsdc(delivered!)} INTO 2OPTIONS`}</Button>
+          <Button onClick={depositNow} disabled={busy}>{busy ? 'CONFIRMING…' : `DEPOSIT ${fmtUsdc(delivered!)} INTO 2Options`}</Button>
         )}
         {isFinal(status) && status !== 'SUCCESS' && <Button variant="ghost" onClick={reset}>START OVER</Button>}
         {!isFinal(status) && <div style={mono}>You can close this window; the swap keeps going and this dialog picks it up again.</div>}

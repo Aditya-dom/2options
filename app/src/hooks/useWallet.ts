@@ -65,7 +65,7 @@ export async function initWallet(): Promise<void> {
       contractId: config.contractId,
       methodNames: ACCESS_KEY_METHODS,
       theme: 'dark',
-      description: '2options trades are signed with a limited key that can only call trade, withdraw and LP methods on the 2options contract.',
+      description: '2Options trades are signed with a limited key that can only call trade, withdraw and LP methods on the 2Options contract.',
     });
     useWallet.setState({ accountId: selector.store.getState().accounts.find(a => a.active)?.accountId ?? null, ready: true });
     selector.store.observable.subscribe(state => {

@@ -3,7 +3,7 @@
  *
  * The first time it is needed, the app makes an ed25519 key in the browser and asks the wallet,
  * once, to add it to the user's account as a function-call key. NEAR then lets that key call only
- * the listed zero-deposit methods on the 2options contract (`trade`, `withdraw`, LP redeem and
+ * the listed zero-deposit methods on the 2Options contract (`trade`, `withdraw`, LP redeem and
  * claim) and spend at most ALLOWANCE on gas. It cannot transfer NEAR or tokens, call any other
  * contract, or attach a deposit; `withdraw` pays only the account itself. After that, the app
  * signs those calls itself and sends them straight to the RPC.

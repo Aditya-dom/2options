@@ -1,4 +1,4 @@
-# 2options on NEAR: Contract Interface Spec (draft v0)
+# 2Options on NEAR: Contract Interface Spec (draft v0)
 
 Covers board issues #4 (fixed-point scheme) and #7 (contract interface spec).
 Docs only. No contract code is written until the build window opens on Nov 1.
@@ -48,7 +48,7 @@ Largest intermediate: `1e12 (price) * 1e12 (size at 1e6 scale, 1M contracts) = 1
 ## 3. Storage
 
 ```rust
-pub struct 2options {
+pub struct 2Options {
     owner: AccountId,                       // multisig or DAO later
     usdc: AccountId,                        // NEP-141 token contract
     agent_contract: Option<AccountId>,      // Shade Agent contract (optional in v1)
@@ -301,4 +301,4 @@ Liquidation closes all positions at `last_mark`, pays the liquidator `liquidatio
 | 5 | Who owns `twooptions.near`: your account, or a multisig? | Your account for the hackathon, noted in the README as a trust assumption. |
 | 6 | Collateral token: native USDC on NEAR only, or accept any token through Intents? | USDC only in the contract. Intents swaps into USDC before it arrives. |
 | 7 | Do shorts transfer? | Allow, with the receiver margin check. If it complicates tests, disable short transfers in v1. |
-| 8 | Reuse of the 2options pricing math (organizer question, issue #2). | Disclose as prior work, or rewrite. Not needed in the contract either way, since pricing is off-chain. |
+| 8 | Reuse of the 2Options pricing math (organizer question, issue #2). | Disclose as prior work, or rewrite. Not needed in the contract either way, since pricing is off-chain. |

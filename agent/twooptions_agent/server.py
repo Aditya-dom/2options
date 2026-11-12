@@ -254,7 +254,7 @@ def _warm(cache: ChainCache, stop: threading.Event) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="2options agent: quote server and keeper")
+    p = argparse.ArgumentParser(description="2Options agent: quote server and keeper")
     p.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8787")))
     p.add_argument("--no-keeper", action="store_true", help="serve quotes only")

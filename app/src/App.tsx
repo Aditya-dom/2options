@@ -119,7 +119,7 @@ export default function App() {
       )}
 
       <footer style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 14px', borderTop: `1px solid ${t.LINE}`, fontFamily: t.MONO, fontSize: 10, color: t.GRAY, flexShrink: 0 }}>
-        <span>© 2026 2options Protocol</span>
+        <span>© 2026 2Options Protocol</span>
         <span>{isDemo ? 'Demo' : `NEAR ${config.network} · ${config.contractId}`}</span>
       </footer>
       {funds && <FundsDialog mode={funds} onClose={() => setFunds(null)} />}

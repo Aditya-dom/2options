@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-2options on NEAR: an everlasting-options contract (`contracts/`), an off-chain agent that prices, signs quotes and runs the keeper (`agent/`), and a React app (`app/`). `README.md` describes it; `HANDOFF_ADITYA.md` and `HANDOFF_GAURAV.md` track who owes what.
+2Options on NEAR: an everlasting-options contract (`contracts/`), an off-chain agent that prices, signs quotes and runs the keeper (`agent/`), and a React app (`app/`). `README.md` describes it; `HANDOFF_ADITYA.md` and `HANDOFF_GAURAV.md` track who owes what.
 
 ```bash
 make near-setup      # app (bun) and agent (uv) dependencies

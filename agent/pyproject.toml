@@ -1,7 +1,7 @@
 [project]
 name = "twooptions-agent"
 version = "0.1.0"
-description = "Off-chain pieces for the 2options NEAR contract: wire format, spot feed, vault inventory"
+description = "Off-chain pieces for the 2Options NEAR contract: wire format, spot feed, vault inventory"
 requires-python = ">=3.11"
 dependencies = ["cryptography>=43"]
 
