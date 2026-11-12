@@ -11,7 +11,7 @@ import {
 import { useNow, useProtocol } from '../hooks/useProtocol';
 import { BAD_SIGNATURE, checkQuote } from '../hooks/useAgentTrust';
 import { useWallet } from '../hooks/useWallet';
-import { agent } from '../services';
+import { agent, backend } from '../services';
 import { useTheme } from '../theme';
 import { fundingPerHour, type Pick } from './OptionChain';
 import type { FundsMode } from './FundsDialog';
@@ -105,6 +105,8 @@ export default function TradeTicket({ pick, onPick, size, onSize, onFunds }: {
     setBusy('quote');
     setQuoteErr(null);
     try {
+      // First trade only: add the trading key now, so its wallet confirmation does not eat the quote's timer.
+      await backend.prepareTrading?.(accountId);
       const q = await agent.quote({ series: pick.series, side, size: sizeUnits!, taker: accountId });
       if (checkQuote(q)) setQuote(q);
       else setQuoteErr(BAD_SIGNATURE);

@@ -2,6 +2,7 @@ import type { Wallet, WalletSelector } from '@near-wallet-selector/core';
 import type { WalletSelectorModal } from '@near-wallet-selector/modal-ui';
 import { create } from 'zustand';
 import { ACCESS_KEY_METHODS } from '../backend/chain';
+import { forgetTradingKeys } from '../backend/tradingKey';
 import { DEMO_ACCOUNT } from '../backend/demo';
 import { config, isDemo } from '../lib/config';
 
@@ -26,6 +27,7 @@ export const useWallet = create<WalletStore>(set => ({
   },
   signOut: async () => {
     if (!isDemo && selector) await (await selector.wallet()).signOut();
+    forgetTradingKeys();
     set({ accountId: null });
   },
 }));

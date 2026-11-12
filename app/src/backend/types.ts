@@ -46,6 +46,8 @@ export interface Backend {
   tradeHistory(accountId: string): Promise<Fill[]>;
 
   submit(accountId: string, call: Call): Promise<CallResult>;
+  /** Set up whatever lets trades sign without a wallet popup (chain mode). */
+  prepareTrading?(accountId: string): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------------------------

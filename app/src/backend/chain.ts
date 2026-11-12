@@ -10,6 +10,7 @@ import {
 } from '../lib/contract';
 import { big } from '../lib/units';
 import { viewCall } from './rpc';
+import { TradingKey } from './tradingKey';
 import { config } from '../lib/config';
 import { fetchFills, type Fill } from '../lib/history';
 import type { Backend, Call, CallResult } from './types';
@@ -30,16 +31,26 @@ export const MAX_BATCH_LEGS = 4;
 
 /** Zero-deposit methods a limited access key may call, so trades sign without a wallet popup. */
 export const ACCESS_KEY_METHODS = ['trade', 'withdraw', 'lp_request_redeem', 'lp_claim'];
+const TRADING_KEY_CALLS = new Set<Call['kind']>(['trade', 'withdraw', 'lp_request_redeem', 'lp_claim']);
 
 export class ChainBackend implements Backend {
   readonly mode = 'chain' as const;
+
+  private readonly tradingKey: TradingKey;
 
   constructor(
     readonly contractId: string,
     readonly usdcId: string,
     private readonly rpcUrl: string | readonly string[],
     private readonly wallet: () => Promise<Wallet>,
-  ) {}
+  ) {
+    this.tradingKey = new TradingKey(typeof rpcUrl === 'string' ? [rpcUrl] : rpcUrl, config.network, contractId, ACCESS_KEY_METHODS);
+  }
+
+  /** Make sure the trading key exists before a quote's short timer starts (one wallet confirmation, once). */
+  async prepareTrading(accountId: string) {
+    await this.tradingKey.ensure(accountId, this.wallet);
+  }
 
   tradeHistory(accountId: string): Promise<Fill[]> {
     return fetchFills(config.network, accountId, this.contractId);
@@ -77,6 +88,11 @@ export class ChainBackend implements Backend {
 
   async submit(accountId: string, call: Call): Promise<CallResult> {
     const { receiverId, actions } = await this.toTx(accountId, call);
+    // Single zero-deposit calls to the contract are signed by the app's trading key: no popup.
+    if (receiverId === this.contractId && actions.length === 1 && TRADING_KEY_CALLS.has(call.kind)) {
+      const key = await this.tradingKey.ensure(accountId, this.wallet);
+      return readOutcome(await this.tradingKey.send(accountId, key, receiverId, actions));
+    }
     const wallet = await this.wallet();
     const outcome = await wallet.signAndSendTransaction({ signerId: accountId, receiverId, actions });
     return readOutcome(outcome);

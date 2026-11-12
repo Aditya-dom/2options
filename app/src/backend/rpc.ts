@@ -67,3 +67,39 @@ async function viewOnce<T>(rpcUrl: string, accountId: string, method: string, ar
   const bytes = new Uint8Array(body.result.result as number[]);
   return JSON.parse(new TextDecoder().decode(bytes)) as T;
 }
+
+/** A JSON-RPC error with the node's own error object, e.g. `{ cause: { name: 'UNKNOWN_ACCESS_KEY' } }`. */
+export class RpcCallError extends RpcError {
+  constructor(message: string, readonly data: unknown) { super(message); }
+}
+
+/**
+ * Any JSON-RPC method, with the same endpoint fallback as `viewCall`. Only failures where no
+ * node answered are retried elsewhere; an error a node returns is final.
+ */
+export async function rpcCall<T>(rpcUrls: string | readonly string[], method: string, params: unknown): Promise<T> {
+  const urls = typeof rpcUrls === 'string' ? [rpcUrls] : rpcUrls;
+  let last: unknown;
+  for (let i = 0; i < urls.length; i++) {
+    const idx = (preferred + i) % urls.length;
+    let res: Response;
+    try {
+      res = await fetch(urls[idx], {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: `twooptions-${++nextId}`, method, params }),
+      });
+    } catch (e) {
+      last = new Unavailable(`${new URL(urls[idx]).host}: ${e instanceof Error ? e.message : String(e)}`);
+      continue;
+    }
+    if (res.status === 429 || res.status >= 500) { last = new Unavailable(`${new URL(urls[idx]).host}: HTTP ${res.status}`); continue; }
+    if (res.status === 408) throw new RpcCallError(`RPC ${method}: timed out`, { name: 'TIMEOUT_ERROR' });
+    if (!res.ok) throw new RpcError(`RPC ${method}: HTTP ${res.status}`);
+    const body = await res.json();
+    preferred = idx;
+    if (body.error) throw new RpcCallError(`RPC ${method}: ${JSON.stringify(body.error.data ?? body.error.cause ?? body.error)}`, body.error);
+    return body.result as T;
+  }
+  throw last;
+}
