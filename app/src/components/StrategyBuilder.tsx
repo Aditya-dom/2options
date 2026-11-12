@@ -2,7 +2,7 @@ import { Plus, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { MAX_BATCH_LEGS } from '../backend/chain';
 import type { SignedQuote } from '../backend/types';
-import { healthTier, seriesLabel, type Side, type Underlying } from '../lib/contract';
+import { healthTier, type Side, type Underlying } from '../lib/contract';
 import { friendlyError } from '../lib/errors';
 import { executionOrder, previewBatch, type TradeLeg } from '../lib/preview';
 import { DEFAULT_VOL, everlasting } from '../lib/pricing';
@@ -15,7 +15,10 @@ import { agent, backend } from '../services';
 import { useTheme } from '../theme';
 import { fundingPerHour } from './OptionChain';
 import PayoffChart from './PayoffChart';
+import Select from './Select';
 import { Button, Empty, Note, Panel, Row, Stat } from './ui';
+
+const abs = (x: bigint) => (x < 0n ? -x : x);
 
 interface Resolved extends StrategyLeg { idx: number; units: bigint; price: bigint; delta: number; gamma: number; fundPerHour: bigint }
 
@@ -157,16 +160,19 @@ export default function StrategyBuilder() {
   const tier = preview?.ratioAfterBps != null && params ? healthTier(preview.ratioAfterBps, params) : null;
   const cell = { fontFamily: t.MONO, fontSize: 11, padding: '6px 8px' } as const;
   const options = series.filter(s => s.underlying === active && s.active);
+  // A leg is picked as strike + call/put rather than from one long list of every series.
+  const strikes = [...new Set(options.map(s => s.strike))].sort((a, b) => (a < b ? -1 : 1));
+  const atm = strikes.reduce<bigint | null>((best, k) => (best == null || abs(k - spot) < abs(best - spot) ? k : best), null);
+  const strikeOptions = strikes.map(k => ({ value: k.toString(), label: (k / 100_000_000n).toLocaleString('en-US'), hint: k === atm ? 'ATM' : undefined }));
+  const seriesFor = (strike: bigint, kind: 'Call' | 'Put') => options.find(s => s.strike === strike && s.kind === kind);
 
   return (
     <div className="trade-grid">
       <div style={{ display: 'grid', gap: 12, minWidth: 0, alignContent: 'start' }}>
         <Panel title="STRATEGY BUILDER" right={
           underlyings.length > 1 ? (
-            <select aria-label="Underlying" value={active} onChange={e => { setU(e.target.value as Underlying); setLegs([]); }}
-              style={{ fontFamily: t.MONO, fontSize: 10, background: t.MUTED, color: t.WHITE, border: `1px solid ${t.BORDER}` }}>
-              {underlyings.map(x => <option key={x}>{x}</option>)}
-            </select>
+            <Select ariaLabel="Underlying" value={active} options={underlyings.map(x => ({ value: x, label: x }))}
+              onChange={x => { setU(x as Underlying); setLegs([]); }} style={{ fontSize: 10 }} />
           ) : <span style={{ color: t.WHITE, letterSpacing: 0 }}>{active}</span>
         }>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
@@ -205,10 +211,31 @@ export default function StrategyBuilder() {
                         }}>{l.side.toUpperCase()}</button>
                       </td>
                       <td style={cell}>
-                        <select aria-label={`Series of leg ${i + 1}`} value={l.series} onChange={e => edit(i, { series: e.target.value })}
-                          style={{ fontFamily: t.MONO, fontSize: 11, background: t.MUTED, color: t.WHITE, border: `1px solid ${t.BORDER}`, padding: '3px 6px' }}>
-                          {options.map(s => <option key={s.id} value={s.id}>{seriesLabel(s)}</option>)}
-                        </select>
+                        {(() => {
+                          const s = seriesMap.get(l.series);
+                          if (!s) return <span style={{ color: t.DIM }}>{l.series}</span>;
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                              <Select ariaLabel={`Strike of leg ${i + 1}`} value={s.strike.toString()} options={strikeOptions} style={{ width: 92 }}
+                                onChange={k => { const n = seriesFor(BigInt(k), s.kind); if (n) edit(i, { series: n.id }); }} />
+                              <div role="group" aria-label={`Call or put for leg ${i + 1}`} style={{ display: 'flex' }}>
+                                {(['Call', 'Put'] as const).map(kind => {
+                                  const target = seriesFor(s.strike, kind);
+                                  const on = s.kind === kind;
+                                  return (
+                                    <button key={kind} aria-pressed={on} disabled={!target} title={kind}
+                                      onClick={() => target && !on && edit(i, { series: target.id })}
+                                      style={{
+                                        fontFamily: t.MONO, fontSize: 10, fontWeight: 700, width: 26, padding: '4px 0', cursor: target ? 'pointer' : 'not-allowed',
+                                        color: on ? t.ACCENT : t.GRAY, background: on ? t.ACCENT_BG : 'transparent',
+                                        border: `1px solid ${on ? t.ACCENT : t.BORDER}`, marginLeft: kind === 'Put' ? -1 : 0,
+                                      }}>{kind === 'Call' ? 'C' : 'P'}</button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td style={{ ...cell, textAlign: 'right' }}>
                         <input aria-label={`Size of leg ${i + 1}`} inputMode="decimal" value={l.size} onChange={e => edit(i, { size: e.target.value.replace(/[^\d.]/g, '') })}

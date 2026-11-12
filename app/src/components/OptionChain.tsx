@@ -6,6 +6,7 @@ import { useProtocol } from '../hooks/useProtocol';
 import { FUNDING_SCALE, fmtPremium, fmtSize, fmtSpot, SPOT_SCALE } from '../lib/units';
 import { useTheme } from '../theme';
 import { fmtDuration, useFundingCountdown } from './FundingPanel';
+import Select from './Select';
 
 export interface Pick { series: string; side: Side }
 
@@ -244,10 +245,8 @@ export default function OptionChain({ selected, onPick }: { selected: Pick | nul
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 10px', borderBottom: `1px solid ${t.BORDER}`, flexWrap: 'wrap' }}>
         <span style={label}>PAIR</span>
         {underlyings.length > 1 ? (
-          <select aria-label="Underlying" value={active} onChange={e => setU(e.target.value as Underlying)}
-            style={{ fontFamily: t.MONO, fontSize: 11, padding: '4px 8px', background: t.PANEL, color: t.WHITE, border: `1px solid ${t.BORDER2}` }}>
-            {underlyings.map(x => <option key={x} value={x}>{x}/USD</option>)}
-          </select>
+          <Select ariaLabel="Underlying" value={active ?? ''} options={underlyings.map(x => ({ value: x, label: `${x}/USD` }))}
+            onChange={x => setU(x as Underlying)} />
         ) : (
           <span style={{ fontFamily: t.MONO, fontSize: 11, padding: '4px 8px', color: t.WHITE, border: `1px solid ${t.BORDER2}` }}>{active ?? '—'}/USD</span>
         )}

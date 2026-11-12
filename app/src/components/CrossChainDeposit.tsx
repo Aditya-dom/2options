@@ -12,6 +12,7 @@ import { useWallet } from '../hooks/useWallet';
 import { world } from '../services';
 import { useTheme } from '../theme';
 import { AmountInput, Button, Dialog, Note, Row } from './ui';
+import Select from './Select';
 
 /**
  * Deposit from another chain via NEAR Intents 1Click: swap to native USDC delivered to the
@@ -199,11 +200,12 @@ export default function CrossChainDeposit({ onClose }: { onClose: () => void }) 
       {tokensErr && <Note tone="error">Could not load 1Click tokens: {tokensErr}</Note>}
 
       <label style={{ ...mono, letterSpacing: '0.14em' }}>FROM</label>
-      <select aria-label="Source asset" value={sourceIdx} onChange={e => setSourceIdx(Number(e.target.value))}
-        style={{ fontFamily: t.MONO, fontSize: 12, padding: '8px 10px', background: t.MUTED, color: t.WHITE, border: `1px solid ${t.BORDER}` }}>
-        {options.length === 0 && <option>{tokens ? 'No supported assets' : 'Loading…'}</option>}
-        {options.map((o, i) => <option key={o.token.assetId} value={i}>{o.label}</option>)}
-      </select>
+      {options.length === 0 ? (
+        <div style={{ fontFamily: t.MONO, fontSize: 12, padding: '8px 10px', color: t.DIM, border: `1px solid ${t.BORDER}` }}>{tokens ? 'No supported assets' : 'Loading…'}</div>
+      ) : (
+        <Select ariaLabel="Source asset" value={sourceIdx} options={options.map((o, i) => ({ value: i, label: o.label }))}
+          onChange={setSourceIdx} style={{ fontSize: 12, padding: '8px 10px', width: '100%' }} />
+      )}
       <AmountInput ariaLabel="Amount to send" value={amount} onChange={setAmount} suffix={src?.symbol} />
       {amount !== '' && units == null && <div style={{ ...mono, color: t.RED }}>Up to {src?.token.decimals} decimals.</div>}
       <input aria-label="Refund address" value={refundTo} onChange={e => setRefundTo(e.target.value)}
