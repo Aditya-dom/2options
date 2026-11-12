@@ -1,7 +1,9 @@
-"""Everlasting option delta for inventory (the Paradigm half-weight series, f = 1 hour).
+"""Delta of the half-weight (Paradigm) everlasting series with an hourly period.
 
-Kept minimal on purpose: #20 ports the full pricing and vol surface. Swap `everlasting_delta`
-for that implementation once it lands; `inventory.compute` takes the delta function as input.
+Kept as an independent reference implementation: `tests/test_pricing.py` checks that
+`pricing.everlasting(..., funding_fraction=0.5, interval_hours=1)` reproduces it. The quoter,
+the keeper and `inventory` all use `pricing.py`, whose weights follow the funding rule the
+contract actually settles (1/24 of time value per hour).
 """
 
 from __future__ import annotations

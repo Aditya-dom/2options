@@ -91,6 +91,27 @@ export interface Attestation {
   tee_quote_url?: string;
 }
 
+/** One row of `GET /funding/history`: a settlement the agent posted. All integers are decimal strings. */
+export interface FundingHistoryJson {
+  series: string;
+  epoch: string;
+  rate: string;
+  mark: string;
+  per_contract: string;
+  index: string;
+  ts_ns: string;
+  tx_hash: string;
+}
+
+export interface FundingHistoryRow {
+  series: string;
+  epoch: bigint;
+  mark: bigint;
+  /** USDC micros per contract; positive means longs paid. */
+  perContract: bigint;
+  atMs: number;
+}
+
 export interface Agent {
   readonly kind: 'http' | 'mock';
   /** False when quotes cannot pass the contract's signature check (mock agent against a real chain). */
@@ -100,4 +121,6 @@ export interface Agent {
   spot(): Promise<Partial<Record<Underlying, SpotPoint>>>;
   /** Null when the agent does not publish one. */
   attestation(): Promise<Attestation | null>;
+  /** Past settlements, newest first. Only the quote server keeps them; RPC cannot list events. */
+  fundingHistory?(limit: number): Promise<FundingHistoryRow[]>;
 }

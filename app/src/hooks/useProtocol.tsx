@@ -55,6 +55,19 @@ const EMPTY: ProtocolData = {
   loaded: false, error: null,
 };
 
+/** Newest first, one row per (series, epoch). The first copy of a duplicate wins. */
+export function mergeFundingEvents(events: FundingEvent[]): FundingEvent[] {
+  const seen = new Set<string>();
+  const out: FundingEvent[] = [];
+  for (const e of events) {
+    const key = `${e.series}-${e.epoch}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(e);
+  }
+  return out.sort((a, b) => b.atMs - a.atMs);
+}
+
 const Ctx = createContext<ProtocolCtx | null>(null);
 
 export function ProtocolProvider({ children }: { children: ReactNode }) {
@@ -62,6 +75,7 @@ export function ProtocolProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<ProtocolData>(EMPTY);
   const lastSeries = useRef<Map<string, Series>>(new Map());
   const inflight = useRef(false);
+  const historyLoaded = useRef(false);
 
   const load = useCallback(async () => {
     if (inflight.current) return;
@@ -101,6 +115,15 @@ export function ProtocolProvider({ children }: { children: ReactNode }) {
       }
       lastSeries.current = new Map(series.map(s => [s.id, s]));
 
+      // The quote server keeps past settlements; load them once so the page is not empty on open.
+      let history: FundingEvent[] = [];
+      if (!historyLoaded.current && agent.fundingHistory) {
+        try {
+          history = await agent.fundingHistory(MAX_FUNDING_EVENTS);
+          historyLoaded.current = true;
+        } catch { /* retried on the next poll */ }
+      }
+
       setData(d => ({
         params, series, spots, vault, paused, chain, agentError,
         account: acct?.[0] ?? null,
@@ -108,7 +131,9 @@ export function ProtocolProvider({ children }: { children: ReactNode }) {
         lpClaim: acct?.[2] ?? null,
         usdc: acct?.[3] ?? null,
         usdcRegistered: acct?.[4] ?? null,
-        fundingEvents: fresh.length ? [...fresh, ...d.fundingEvents].slice(0, MAX_FUNDING_EVENTS) : d.fundingEvents,
+        fundingEvents: fresh.length || history.length
+          ? mergeFundingEvents([...fresh, ...d.fundingEvents, ...history]).slice(0, MAX_FUNDING_EVENTS)
+          : d.fundingEvents,
         loaded: true,
         error: null,
       }));

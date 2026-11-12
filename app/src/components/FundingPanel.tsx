@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { seriesLabel } from '../lib/contract';
 import { fmtPremium, NS_PER_MS } from '../lib/units';
 import { useNow, useProtocol } from '../hooks/useProtocol';
+import { agent } from '../services';
 import { useTheme } from '../theme';
 import { fundingPerHour } from './OptionChain';
 import { Empty, Panel } from './ui';
@@ -24,7 +25,9 @@ export const fmtDuration = (ms: number) => {
 
 export default function FundingPanel() {
   const { t } = useTheme();
-  const { series, chain, fundingEvents } = useProtocol();
+  const { series, chain, fundingEvents, params } = useProtocol();
+  const capPct = params ? (Number(params.max_funding_rate) / 1e7).toFixed(1).replace(/\.0$/, '') : null;
+  const hasHistory = agent.fundingHistory != null;
   const cd = useFundingCountdown();
   const seriesMap = useMemo(() => new Map(series.map(s => [s.id, s])), [series]);
 
@@ -59,12 +62,12 @@ export default function FundingPanel() {
           </table>
         </div>
         <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.DIM, padding: '8px 10px', borderTop: `1px solid ${t.BORDER}`, lineHeight: 1.5 }}>
-          Each settlement adds rate × mark to the series' cumulative index (capped at 4%/h). A position owes size × (index now − index at entry), applied on its next trade, withdrawal or liquidation.
+          Each settlement adds rate × mark to the series' cumulative index{capPct ? ` (capped at ${capPct}% per settlement)` : ''}. A position owes size × (index now − index at entry), applied on its next trade, withdrawal or liquidation.
         </div>
       </Panel>
 
-      <Panel title="SETTLEMENTS SEEN THIS SESSION" bodyStyle={{ padding: 0 }}>
-        {fundingEvents.length === 0 ? <Empty>No settlements since this page loaded.</Empty> : (
+      <Panel title={hasHistory ? 'RECENT SETTLEMENTS' : 'SETTLEMENTS SEEN THIS SESSION'} bodyStyle={{ padding: 0 }}>
+        {fundingEvents.length === 0 ? <Empty>{hasHistory ? 'No settlements yet.' : 'No settlements since this page loaded.'}</Empty> : (
           <div style={{ overflowX: 'auto', maxHeight: 320 }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 460 }}>
               <thead><tr>{th('TIME', 'left')}{th('SERIES', 'left')}{th('EPOCH')}{th('MARK')}{th('PER CONTRACT')}</tr></thead>

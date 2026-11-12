@@ -515,6 +515,27 @@ fn funding_moves_cash_from_longs_to_the_vault_and_conserves_the_ledger() {
 }
 
 #[test]
+fn account_view_exposes_entry_index_until_funding_is_applied() {
+    let mut h = ready();
+    h.trade("alice.near", "ETH-3500-C", Side::Buy, 10.0, 12.0);
+    h.advance(60);
+    h.spot(3_500);
+    h.funding("ETH-3500-C", 10_000_000, 12.0);
+
+    // Settled on the series, not yet on the account: the gap is what the UI shows as accrued.
+    let index = h.c.get_series("ETH-3500-C".into()).unwrap().funding_index.0;
+    assert_eq!(index, 120_000);
+    let view = h.c.get_account(acct("alice.near")).unwrap();
+    assert_eq!(view.positions[0].entry_index.0, 0);
+
+    // Any touch settles it and moves the entry index up to the series index.
+    h.trade("alice.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
+    let view = h.c.get_account(acct("alice.near")).unwrap();
+    assert_eq!(view.positions[0].entry_index.0, index);
+    h.assert_solvent();
+}
+
+#[test]
 fn funding_rate_is_clamped_to_the_cap() {
     let mut h = ready();
     h.advance(60);

@@ -222,6 +222,9 @@ pub struct PositionView {
     pub size: I128,
     pub mark: U128,
     pub value: I128,
+    /// The series funding index this position last settled at. Funding owed on the next touch
+    /// is `size * (series.funding_index - entry_index) / 1e6`, positive when the trader pays.
+    pub entry_index: I128,
 }
 
 #[near(serializers = [json])]

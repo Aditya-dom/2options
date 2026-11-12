@@ -1,0 +1,150 @@
+"""A read-only snapshot of the contract state the quoter and keeper price against."""
+
+from __future__ import annotations
+
+import threading
+import time
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
+
+from . import rpc
+from .margin import MarginParams
+from .wire import Underlying
+
+#: `view(method, args)` against the perennia contract.
+Viewer = Callable[[str, dict[str, Any] | None], Any]
+
+NS = 1_000_000_000
+HOUR_NS = 3_600 * NS
+
+
+def rpc_viewer(rpc_url: str, contract_id: str) -> Viewer:
+    """Views at optimistic finality: the freshest spot the next block will see."""
+
+    def view(method: str, args: dict[str, Any] | None = None) -> Any:
+        return rpc.view(rpc_url, contract_id, method, args, finality="optimistic")
+
+    return view
+
+
+def _int(v: object) -> int:
+    return int(str(v))
+
+
+@dataclass(frozen=True)
+class Series:
+    id: str
+    underlying: Underlying
+    strike: int  # USD x 1e8
+    is_call: bool
+    funding_index: int
+    last_mark: int
+    last_epoch: int
+    net_trader_size: int
+    active: bool
+
+    @classmethod
+    def from_view(cls, j: dict[str, Any]) -> Series:
+        return cls(
+            id=str(j["id"]),
+            underlying=Underlying[str(j["underlying"])],
+            strike=_int(j["strike"]),
+            is_call=j["kind"] == "Call",
+            funding_index=_int(j["funding_index"]),
+            last_mark=_int(j["last_mark"]),
+            last_epoch=_int(j["last_epoch"]),
+            net_trader_size=_int(j["net_trader_size"]),
+            active=bool(j["active"]),
+        )
+
+
+@dataclass(frozen=True)
+class Params:
+    max_quote_ttl_ns: int
+    max_spot_age_ns: int
+    max_funding_rate: int
+    funding_interval_ns: int
+    liquidation_ratio_bps: int
+    vault_ratio_bps: int
+    max_spot_jump_bps: int
+    margin: MarginParams
+
+    @classmethod
+    def from_view(cls, j: dict[str, Any]) -> Params:
+        return cls(
+            max_quote_ttl_ns=_int(j["max_quote_ttl_ns"]),
+            max_spot_age_ns=_int(j["max_spot_age_ns"]),
+            max_funding_rate=_int(j["max_funding_rate"]),
+            funding_interval_ns=_int(j["funding_interval_ns"]),
+            liquidation_ratio_bps=_int(j["liquidation_ratio_bps"]),
+            vault_ratio_bps=_int(j["vault_ratio_bps"]),
+            max_spot_jump_bps=_int(j["max_spot_jump_bps"]),
+            margin=MarginParams.from_json(j),
+        )
+
+
+@dataclass(frozen=True)
+class Spot:
+    price: int  # USD x 1e8
+    ts_ns: int
+
+
+@dataclass(frozen=True)
+class Snapshot:
+    params: Params
+    series: dict[str, Series]
+    spots: dict[Underlying, Spot]
+    vault_cash: int
+    paused: bool
+    fetched_ns: int
+
+    def fresh_spot(self, u: Underlying, now_ns: int) -> int | None:
+        """The spot the contract would accept right now, or None if it would call it stale."""
+        sp = self.spots.get(u)
+        if sp is None or now_ns - sp.ts_ns > self.params.max_spot_age_ns:
+            return None
+        return sp.price
+
+
+def fetch_snapshot(view: Viewer, now_ns: int | None = None) -> Snapshot:
+    params = Params.from_view(view("get_params", None))
+    series = {s.id: s for s in (Series.from_view(j) for j in view("list_series", None))}
+    spots: dict[Underlying, Spot] = {}
+    for u in sorted({s.underlying for s in series.values()}):
+        sp = view("get_spot", {"underlying": u.name})
+        if sp is not None:
+            spots[u] = Spot(_int(sp[0]), _int(sp[1]))
+    vault = view("get_vault", None)
+    return Snapshot(
+        params=params,
+        series=series,
+        spots=spots,
+        vault_cash=_int(vault["cash"]),
+        paused=bool(view("is_paused", None)),
+        fetched_ns=now_ns if now_ns is not None else time.time_ns(),
+    )
+
+
+@dataclass
+class ChainCache:
+    """Latest snapshot, shared between the HTTP threads and the keeper."""
+
+    view: Viewer
+    max_age_s: float = 2.0
+    _snap: Snapshot | None = field(default=None, init=False)
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+
+    def refresh(self) -> Snapshot:
+        snap = fetch_snapshot(self.view)
+        with self._lock:
+            self._snap = snap
+        return snap
+
+    def get(self) -> Snapshot:
+        """The cached snapshot, refreshed first if it is older than `max_age_s`."""
+        with self._lock:
+            snap = self._snap
+        if snap is None or time.time_ns() - snap.fetched_ns > self.max_age_s * NS:
+            return self.refresh()
+        return snap

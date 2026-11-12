@@ -15,15 +15,19 @@ import sys
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 
-from . import rpc
-from .greeks import everlasting_delta
+from . import pricing, rpc
 from .wire import Underlying
 
 SIZE_SCALE = 10**6
 SPOT_SCALE = 10**8
-DEFAULT_VOL = {Underlying.BTC: 0.5, Underlying.ETH: 0.6, Underlying.SOL: 0.8, Underlying.NEAR: 0.9}
+DEFAULT_VOL = pricing.DEFAULT_ATM_VOL
 
 DeltaFn = Callable[[float, float, float, bool], float]
+
+
+def everlasting_delta(spot: float, strike: float, vol: float, is_call: bool) -> float:
+    """Delta under the agent's pricing model (pricing.py), so the hedge matches the quotes."""
+    return pricing.everlasting(spot, strike, vol, is_call).delta
 
 
 @dataclass(frozen=True)

@@ -8,6 +8,62 @@ Open `near-board.html` in a browser for the full issue board. Your issues are th
 
 ---
 
+## Update, Nov 11: reply to HANDOFF_GAURAV.md
+
+The original handoff below is unchanged; where it says something is not built, this section wins. Nothing here is deployed yet. All of it is in the working tree, tested locally, not against a live network.
+
+### What now exists
+
+| Your ask (HANDOFF_GAURAV.md) | State |
+|---|---|
+| §1.1 Deploy perennia | Tooling done, **not run**: `make near-wasm && make near-bootstrap` (`agent/perennia_agent/admin.py`). Needs a funded testnet owner account, about 11 NEAR. |
+| §1.2 Which USDC, how to get it | A mintable test token, `contracts/test-usdc`, deployed by bootstrap at `usdc.<owner>`. Anyone can call `mint`; `admin mint --to <you> --amount 10000` does it for you. |
+| §1.3 Register the contract with USDC | Bootstrap step `register`. |
+| §1.4 `add_series` | Bootstrap step `add-series`: the at-the-money strike and two either side, about 2.5% of spot apart, calls and puts, around the live spot. |
+| §1.5 Keeper posting spot | `agent/perennia_agent/keeper.py`, every 5 s, using your `SpotFeed`. Seeded from the contract's spot. |
+| §1.6 Keeper settling funding | Same file. Once per epoch per series, 15 s into the epoch, with the epoch's average mark. |
+| §1.7 Seed LP liquidity | Bootstrap step `seed-lp`, 250,000 test USDC by default. |
+| §1.8 Agent URL with CORS | `make near-agent` serves on `:8787`. Origins come from `PERENNIA_CORS_ORIGINS` (default `http://localhost:3001`). |
+| §3.1 `entry_index` in `PositionView` | Done, with a test. The app already reads it, so ACCRUED fills in. |
+| §3.2 Funding history | `GET /funding/history`, in your shape. I wired it into `useProtocol` and the Funding page (loaded once, merged with live settlements). Please check that edit. |
+| §4 API | All of it, plus `iv` on `/chain`, `/inventory` and `/health`. Documented in `agent/README.md`. |
+| §4 Quote rules | Nonce is a microsecond clock. Quotes are priced from the contract's cached spot, so the band cannot disagree. The vault's cash and risk limit are checked before signing, so there is no valid quote that reverts with `vault risk limit reached`. |
+| §4 Quote TTL for multi-leg | Preset sets `max_quote_ttl` to 30 s; quotes live 28 s. |
+| #24 Inventory | `/inventory` serves your `inventory.compute` with the agent's deltas. |
+
+The agent also refuses a quote for an account that has never deposited (`409 deposit first`), which the contract would reject anyway. If the ticket requests a quote before the first deposit, it will now see that error.
+
+### §2, the funding decision: neither option as written
+
+You were right that price and funding disagreed. Working it through, option B does not fix it; it overshoots.
+
+A long who pays a fraction `c` of time value each settlement holds something worth `sum c(1-c)^(n-1) BS(T = n intervals)`. Half weights (`c = 1/2`) are only the right price if longs pay **half** the time value every period. Charging `(mark - intrinsic) / 24` per hour is `c = 1/24`, and the matching price uses weights `(1/24)(23/24)^(n-1)` at hourly maturities: an average life of one day.
+
+| ETH 3,500, 60% vol | ATM price | Funding per hour | Consistent? |
+|---|---|---|---|
+| Half weights, hourly (the old code) | $12.06 | $0.50 | No. Fair funding for this price is about $6/h; the vault bleeds |
+| Half weights, daily (option B) | $59.07 | $2.46 | No. This funding stream is worth $39.2, so quotes are 51% too high and anyone selling to the vault is overpaid |
+| `c = 1/24`, hourly (**what the agent does**) | $39.2 | $1.63 | Yes, by construction |
+
+`agent/tests/test_pricing.py` checks the identity numerically and pins both mismatches. The contract needs no code change, only the preset in `contracts/README.md` ("Deploying"): funding cap 5%, band 400 bps, reserve 150 bps, TTL 30 s. The reserve value is my estimate and is not calibrated.
+
+**What this means for the app:** `src/lib/pricing.ts` still prices with half weights hourly. In chain mode every number on screen comes from the agent, so only demo mode and the payoff charts differ. `app/README.md` ("Open items") lists the port. I did not touch it, because it changes your demo's strike grid, copy and tests.
+
+### §5, the 1Click decision
+
+Not decided, and I did not add `deposit:<account_id>` to `ft_on_transfer`. Option (b), showing the swap land in a mainnet wallet and the deposit separately on testnet, needs no contract change and is what the current code supports.
+
+### Still open on my side
+
+- **Run bootstrap on testnet** and send you the three env values. Until then nothing is verified end to end.
+- **The deployable wasm.** Rust 1.91 emits bulk-memory instructions; build with `cargo-near` (`contracts/README.md`, "Deploying"). Untested on a node.
+- **#18** sandbox integration tests and gas numbers: not done.
+- **#34** Shade Agent, **#36** auto-roll key, **#38** Hyperliquid hedge, **#14** NEP-245: not started. `/attestation` returns the key and passes through `code_hash` and `tee_quote_url` from the environment when they exist.
+- **#41** README: a draft for the submission repo is in `NEAR_README.md`.
+- §6 eligibility (organizers' answer, the fresh repo): still to answer.
+
+---
+
 ## 1. What we are building
 
 An options venue on NEAR where the **contract holds the money** and an **agent signs the prices**.

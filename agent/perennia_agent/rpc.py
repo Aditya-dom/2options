@@ -23,6 +23,7 @@ def view(
     method: str,
     args: dict[str, Any] | None = None,
     timeout: float = 10.0,
+    finality: str = "final",
 ) -> Any:
     payload = {
         "jsonrpc": "2.0",
@@ -30,7 +31,7 @@ def view(
         "method": "query",
         "params": {
             "request_type": "call_function",
-            "finality": "final",
+            "finality": finality,
             "account_id": account_id,
             "method_name": method,
             "args_base64": base64.b64encode(json.dumps(args or {}).encode()).decode(),

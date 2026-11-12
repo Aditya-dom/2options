@@ -6,7 +6,7 @@ Everlasting-options vault and settlement contract for NEAR. Source: [perennia/sr
 
 ```bash
 cd contracts/perennia
-cargo test --lib                                                    # 70 unit tests
+cargo test --lib                                                    # 71 unit tests
 cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
 cargo build --lib --target wasm32-unknown-unknown --release         # ~530 KB wasm
 ```
@@ -18,6 +18,27 @@ Notes:
 - If linking fails with `libSystem.tbd: unknown architecture`, the default macOS SDK is broken. Use `export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk` for that shell.
 - Not yet covered: gas measurement and sandbox integration tests (`near-workspaces`). Unit tests cannot measure gas.
 
+## Deploying
+
+`make near-wasm` builds both contracts, and `make near-bootstrap` deploys and configures them on testnet (`agent/perennia_agent/admin.py`; steps in `agent/README.md`).
+
+**Build the deployable wasm with `cargo-near`** (`cargo install cargo-near`). Rust 1.91 emits bulk-memory instructions by default: the plain `cargo build` artifact contains about 250 `memory.copy` instructions. `cargo-near` post-processes the wasm for the NEAR runtime; whether a node accepts the plain build has not been tested. `make near-wasm` uses `cargo-near` when it is installed and falls back to the plain build with a warning. Neither artifact has been deployed yet.
+
+Bootstrap applies these parameters on top of `Params::default()`, because the agent charges `(mark - intrinsic) / 24` per hour and prices to match (`agent/README.md`, "Pricing"):
+
+| Parameter | Default | Preset | Why |
+|---|---|---|---|
+| `max_funding_rate` | 4% | 5% | 1/24 = 4.17% of mark for every out-of-the-money series; the default would clip them all |
+| `max_time_value_bps` | 150 | 400 | At-the-money time value is about 1.1% of spot at 60% vol and 2.8% at 150% |
+| `tv_reserve_bps` | 100 | 150 | Reserve per short contract, sized to the larger time value. Not calibrated |
+| `max_quote_ttl_ns` | 10 s | 30 s | Multi-leg strategies need every leg quoted and then one wallet confirmation |
+
+A wider band and a longer TTL also widen what a compromised agent key could do (limitation 1). They are the price of quoting at high vol and of one-confirmation strategies.
+
+## Test USDC (`test-usdc/`)
+
+A NEP-141 token with 6 decimals and an open faucet (`mint(account_id, amount)`, up to 1,000,000 USDC per call) built on `near-contract-standards`. Testnet only: anyone can mint, so it is worthless by design. It exists so deposits, withdrawals and LP flows can run end to end without someone else's faucet. `admin` refuses to use it outside testnet.
+
 ## Module map
 
 | File | Purpose |
@@ -27,6 +48,7 @@ Notes:
 | `types.rs` | State, parameters, signed message structs, view structs |
 | `lib.rs` | The contract: deposits, withdrawals, LP vault, `trade`, `post_spot`, `settle_funding`, `liquidate`, admin, views |
 | `tests.rs` | Unit tests plus a 2,000-step random run that checks the solvency invariant |
+| `examples/` | Generators for the parity fixtures the app and agent test against |
 
 ## Wire format for the agent
 
@@ -73,13 +95,14 @@ The JSON API takes 64 and 128-bit numbers as strings (`U128`, `U64`, `I128`).
 
 1. **The agent key is trusted within the band.** The band is intrinsic value minus 0.2% of spot up to intrinsic plus 1.5% of spot (about $52 on ETH at 3,500, against a real ATM price near $12). A compromised key colluding with a trader could still trade at the favourable edge until the vault risk limit stops it. The band and the vault limit cap the damage but do not remove it. Mitigations still to add: a band around the last attested mark, a per-epoch loss cap for the vault, and key rotation (`set_agent_keys`) as the emergency response.
 2. **Spot is agent-signed in v1.** The earlier plan had a permissionless oracle poke. A Pyth cross-check is the right upgrade; it was left out because the call shape could not be verified offline.
-3. **Funding rate and mark come from the agent**, clamped to 4% per hour and to the price band.
+3. **Funding rate and mark come from the agent**, clamped to `max_funding_rate` per settlement and to the price band.
 4. **Marks go stale between hourly funding updates.** Longs are valued at intrinsic only and shorts never below intrinsic, which keeps equity conservative, but LP share prices can lag fast moves in time value.
 5. **Every underlying with open interest needs a fresh spot**, or trading and LP operations revert. The keeper must post all of them.
 6. **Margin shocks are not calibrated** against the 12-scenario Rust model yet.
-7. **No NEP-245 positions yet.** Positions live inside the account record and are not transferable. The views expose them.
+7. **No NEP-245 positions yet.** Positions live inside the account record and are not transferable. The views expose them, including each position's `entry_index` (accrued funding is `size * (series.funding_index - entry_index) / 1e6`).
 8. **No gas measurement.** The worst case (32 series, 32 positions) has not been run on a sandbox.
-9. **Unaudited.** The Rust unit tests are not a substitute for an external review.
+9. **Accounts cannot be listed.** `accounts` is a `LookupMap`, so a liquidator has to learn account ids off chain. The agent's keeper watches the accounts it has quoted for.
+10. **Unaudited.** The Rust unit tests are not a substitute for an external review.
 
 ## Differences from NEAR_CONTRACT_SPEC.md
 

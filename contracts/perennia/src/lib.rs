@@ -644,6 +644,7 @@ impl Perennia {
                     size: I128(p.size),
                     mark: U128(mark as u128),
                     value: I128(value),
+                    entry_index: I128(p.entry_index),
                 }
             })
             .collect();

@@ -8,7 +8,9 @@ import { priceBand } from '../lib/margin';
 import type { Params, QuoteJson, Series, SpotPoint, Underlying } from '../lib/contract';
 import { everlasting, intrinsicF } from '../lib/pricing';
 import { big, FUNDING_SCALE, NS_PER_MS, nowNs, SPOT_SCALE, USDC_UNIT } from '../lib/units';
-import type { Agent, Attestation, ChainRow, ChainRowJson, QuoteRequest, SignedQuote } from './types';
+import type {
+  Agent, Attestation, ChainRow, ChainRowJson, FundingHistoryJson, FundingHistoryRow, QuoteRequest, SignedQuote,
+} from './types';
 
 export class HttpAgent implements Agent {
   readonly kind = 'http' as const;
@@ -54,6 +56,11 @@ export class HttpAgent implements Agent {
     return res.json() as Promise<Attestation>;
   }
 
+  async fundingHistory(limit: number): Promise<FundingHistoryRow[]> {
+    const rows = await this.get<FundingHistoryJson[]>('/funding/history', { limit: String(limit) });
+    return rows.map(parseFundingHistory);
+  }
+
   async spot(): Promise<Partial<Record<Underlying, SpotPoint>>> {
     const j = await this.get<Partial<Record<Underlying, { price: string; ts_ns: string }>>>('/spot');
     const out: Partial<Record<Underlying, SpotPoint>> = {};
@@ -61,6 +68,14 @@ export class HttpAgent implements Agent {
     return out;
   }
 }
+
+export const parseFundingHistory = (r: FundingHistoryJson): FundingHistoryRow => ({
+  series: r.series,
+  epoch: big(r.epoch),
+  mark: big(r.mark),
+  perContract: big(r.per_contract),
+  atMs: Number(big(r.ts_ns) / NS_PER_MS),
+});
 
 export interface PricingSources {
   spots(): Promise<Partial<Record<Underlying, SpotPoint>>>;
