@@ -1,3 +1,5 @@
+<p align="center"><img src="app/public/logo-full.png" alt="2Options" width="220" /></p>
+
 # 2options on NEAR
 
 Everlasting options on NEAR: calls and puts that never expire. A buyer pays a small funding amount every hour instead of buying a dated contract and rolling it. A NEAR contract holds all the money and enforces margin. An off-chain agent proposes prices by signing quotes, and the contract checks every one of them.

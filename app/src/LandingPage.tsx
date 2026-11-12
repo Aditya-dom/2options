@@ -199,7 +199,7 @@ export default function LandingPage() {
         {/* NAV */}
         <nav style={{ display:'flex', alignItems:'center', padding:'0 32px', height:58, borderBottom:`1px solid ${t.border}`, transition:'border-color 0.4s' }}>
           <a href="#/" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none' }}>
-            <img src="/logo.svg" alt="2options" style={{ width:24, height:24, borderRadius:3 }}/>
+            <img src="/logo.png" alt="2options" style={{ width:24, height:24, borderRadius:3 }}/>
             <span style={{ fontFamily:MONO, fontSize:12, fontWeight:600, letterSpacing:'0.12em', color:t.text, transition:'color 0.4s' }}>2OPTIONS</span>
           </a>
           <div style={{ flex:1 }}/>
@@ -344,7 +344,7 @@ export default function LandingPage() {
         {/* FOOTER */}
         <footer style={{ borderTop:`1px solid ${t.border}`, padding:'28px 32px', textAlign:'center', transition:'border-color 0.4s' }}>
           <a href="#/" style={{ display:'inline-flex', alignItems:'center', gap:8, textDecoration:'none', marginBottom:14 }}>
-            <img src="/logo.svg" alt="" style={{ width:16, height:16, opacity:0.5 }}/>
+            <img src="/logo.png" alt="" style={{ width:16, height:16, opacity:0.5 }}/>
             <span style={{ fontFamily:MONO, fontSize:10, fontWeight:600, color:t.ghost, letterSpacing:'0.1em', transition:'color 0.4s' }}>2OPTIONS</span>
           </a>
           <p style={{ fontFamily:MONO, fontSize:9, color:t.footerDim, marginTop:14, opacity:0.6, transition:'color 0.4s' }}>&copy; {new Date().getFullYear()} 2options Protocol</p>
