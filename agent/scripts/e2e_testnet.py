@@ -171,17 +171,35 @@ def main() -> int:
     err = fails(lambda: trade(other)) if "quote" in other else "agent refused"
     check("different taker" in err, "someone else's quote is rejected", err[-60:])
 
-    # A stolen agent key: a validly signed quote at a price far from the last funding mark.
+    # A stolen agent key: a validly signed quote that the general price band still accepts (just
+    # under its top edge, intrinsic + max_time_value_bps of spot) but that sits far from the
+    # last funding mark. Only the mark anchor stands between this price and a fill.
     agent_key = config.agent_key()
     series_view = view(contract, "get_series", {"series": call})
     if series_view.get("ref_mark") is not None:
         good = quote(call, "Buy", ONE)["quote"]
+        params = view(contract, "get_params")
+        spot_raw = int(view(contract, "get_spot", {"underlying": "ETH"})[0])
+        spot_micros = spot_raw // 100  # spot is 1e8 fixed point, USDC 1e6
+        intrinsic = max(0, spot_raw - int(series_view["strike"])) // 100
+        tv_bps = int(params["max_time_value_bps"]) - 50  # room for spot to tick before inclusion
+        far = intrinsic + spot_micros * tv_bps // 10_000
+        allowed = (
+            abs(spot_raw - int(series_view["ref_spot"])) // 100
+            + spot_micros * int(params["mark_band_bps"]) // 10_000
+        )
+        check(
+            abs(far - int(series_view["ref_mark"])) > allowed,
+            "the forged price is inside the price band but outside the mark band",
+            f"forged {far / 1e6:.2f}, mark {int(series_view['ref_mark']) / 1e6:.2f}, "
+            f"allowed ±{allowed / 1e6:.2f}",
+        )
         forged = wire.Quote(
             call,
             me,
             wire.Side.Buy,
             ONE,
-            max(0, int(series_view["ref_mark"]) - int(spot * 0.03 * USDC)),
+            far,
             int(good["nonce"]) + 1,
             int(good["expiry_ns"]),
         )
@@ -195,7 +213,7 @@ def main() -> int:
         )
         check(
             "too far from the last funding mark" in err,
-            "a signed price 3% of spot from the funding mark is rejected",
+            "a validly signed price far from the funding mark is rejected",
             err[-60:],
         )
     v = view(contract, "get_vault")
