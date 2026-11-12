@@ -6,11 +6,11 @@ import { useThemeStore } from './theme';
 
 
 /* ── Constants ── */
-/* Accent per theme: NEAR green on white (light), cyan on black (dark). `text` must read on the
+/* Accent per theme: NEAR green on white (light) and on black (dark). `text` must read on the
    page background; `fill` carries `ink` on top of it. */
 const ACCENTS = {
   light: { text:'#117a45', fill:'#78f0a0', ink:'#172325', art:'47,179,106' },
-  dark:  { text:'#00e5ff', fill:'#00e5ff', ink:'#000',    art:'0,229,255' },
+  dark:  { text:'#78f0a0', fill:'#78f0a0', ink:'#172325', art:'120,240,160' },
 };
 const SERIF = "'DM Serif Display', Georgia, serif";
 const BODY = "'Outfit', system-ui, sans-serif";

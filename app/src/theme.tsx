@@ -7,7 +7,8 @@ const DARK = {
   BG: '#000', SURFACE: '#0a0c10', PANEL: '#12151c',
   BORDER: '#2a2e38', BORDER2: '#363b48', MUTED: '#0e1016',
   WHITE: '#e8ecf4', GRAY: '#9aa3b8', DIM: '#5c6478',
-  ACCENT: '#00e5ff', ACCENT_DIM: '#0a2e38', ACCENT_BG: 'rgba(0,229,255,0.12)',
+  // NEAR green. On black the mint reads as text too (about 14:1), not only as a fill.
+  ACCENT: '#78f0a0', ACCENT_DIM: '#0d2a1b', ACCENT_BG: 'rgba(120,240,160,0.12)',
   GREEN: '#00d492', GREEN_DIM: '#0a3324', GREEN_BG: 'rgba(0,212,146,0.12)',
   RED: '#ff5068', RED_DIM: '#3a1018', RED_BG: 'rgba(255,80,104,0.12)',
   ORANGE: '#f5a623', YELLOW: '#f0c000', PURPLE: '#9d99ff',
@@ -16,10 +17,10 @@ const DARK = {
   /** Hard rule between panels: white on dark, black on light. */
   LINE: '#fff',
   /** Brand fill and the ink that sits on it (active tab, primary buttons). */
-  BRAND: '#00e5ff', BRAND_INK: '#000',
-  ACTIVE_BG: 'linear-gradient(180deg, rgba(0,229,255,0.18), rgba(0,229,255,0.07))',
-  ACTIVE_FG: '#00e5ff', ACTIVE_LINE: 'rgba(0,229,255,0.72)',
-  PRIMARY_FG: '#00e5ff', PRIMARY_BG: 'rgba(0,229,255,0.12)', PRIMARY_BORDER: '#00e5ff',
+  BRAND: '#78f0a0', BRAND_INK: '#172325',
+  ACTIVE_BG: 'linear-gradient(180deg, rgba(120,240,160,0.2), rgba(120,240,160,0.07))',
+  ACTIVE_FG: '#78f0a0', ACTIVE_LINE: '#78f0a0',
+  PRIMARY_FG: '#172325', PRIMARY_BG: '#78f0a0', PRIMARY_BORDER: '#78f0a0',
 };
 
 const LIGHT: typeof DARK = {
