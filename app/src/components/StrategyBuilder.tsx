@@ -223,7 +223,7 @@ export default function StrategyBuilder() {
                                   const target = seriesFor(s.strike, kind);
                                   const on = s.kind === kind;
                                   return (
-                                    <button key={kind} aria-pressed={on} disabled={!target} title={kind === 'Call' ? 'Call: pays if ETH ends above the strike' : 'Put: pays if ETH ends below the strike'}
+                                    <button key={kind} aria-pressed={on} disabled={!target} title={kind === 'Call' ? 'Call: worth more as ETH rises above the strike' : 'Put: worth more as ETH falls below the strike'}
                                       onClick={() => target && !on && edit(i, { series: target.id })}
                                       style={{
                                         fontFamily: t.MONO, fontSize: 10, fontWeight: 700, letterSpacing: '0.04em', width: 42, padding: '4px 0', cursor: target ? 'pointer' : 'not-allowed',
