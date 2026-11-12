@@ -5,7 +5,7 @@ import { SPOT_SCALE } from './units';
 
 const mk = (k: number, kind: 'Call' | 'Put'): Series => ({
   id: `ETH-${k}-${kind[0]}`, underlying: 'ETH', strike: BigInt(k) * SPOT_SCALE, kind,
-  fundingIndex: 0n, lastMark: 0n, lastEpoch: 0n, netTraderSize: 0n, active: true,
+  fundingIndex: 0n, lastMark: 0n, lastEpoch: 0n, netTraderSize: 0n, active: true, refMark: null, refSpot: null,
 });
 const grid = [3_450, 3_500, 3_550].flatMap(k => [mk(k, 'Call'), mk(k, 'Put')]);
 const spot = 3_512n * SPOT_SCALE;

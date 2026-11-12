@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from twooptions_agent import config, near, rpc  # noqa: E402
+from twooptions_agent import config, near, rpc, wire  # noqa: E402
 
 AGENT = os.environ.get("AGENT_URL", "http://127.0.0.1:8787")
 USDC = 10**6
@@ -170,6 +170,40 @@ def main() -> int:
     other = quote(call, "Buy", ONE, taker=os.environ["OWNER_ACCOUNT_ID"])
     err = fails(lambda: trade(other)) if "quote" in other else "agent refused"
     check("different taker" in err, "someone else's quote is rejected", err[-60:])
+
+    # A stolen agent key: a validly signed quote at a price far from the last funding mark.
+    agent_key = config.agent_key()
+    series_view = view(contract, "get_series", {"series": call})
+    if series_view.get("ref_mark") is not None:
+        good = quote(call, "Buy", ONE)["quote"]
+        forged = wire.Quote(
+            call,
+            me,
+            wire.Side.Buy,
+            ONE,
+            max(0, int(series_view["ref_mark"]) - int(spot * 0.03 * USDC)),
+            int(good["nonce"]) + 1,
+            int(good["expiry_ns"]),
+        )
+        err = fails(
+            lambda: acct.call(
+                contract,
+                "trade",
+                {"quote": forged.to_json(), "signature": wire.sign(agent_key, contract, forged)},
+                gas=100 * near.TGAS,
+            )
+        )
+        check(
+            "too far from the last funding mark" in err,
+            "a signed price 3% of spot from the funding mark is rejected",
+            err[-60:],
+        )
+    v = view(contract, "get_vault")
+    check(
+        "epoch_net_outflow" in v and int(v["epoch_start_cash"]) > 0,
+        "vault reports its hourly outflow and cap base",
+        {k: v.get(k) for k in ("epoch_net_outflow", "epoch_start_cash")},
+    )
 
     q = quote(put, "Sell", ONE)
     trade(q)

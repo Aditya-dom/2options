@@ -8,12 +8,12 @@ const params: Params = {
   max_funding_rate: 40_000_000n, funding_interval_ns: 3_600_000_000_000n, lp_cooldown_ns: 3_600_000_000_000n,
   min_deposit: 1_000_000n, initial_ratio_bps: 15_000n, close_only_ratio_bps: 13_000n, liquidation_ratio_bps: 11_500n,
   vault_ratio_bps: 12_000n, min_time_value_bps: 20n, max_time_value_bps: 150n, tv_reserve_bps: 100n,
-  min_margin_per_contract: 5_000_000n,
+  min_margin_per_contract: 5_000_000n, mark_band_bps: 100n, max_epoch_outflow_bps: 1_000n,
 };
 
 const call3500: Series = {
   id: 'ETH-3500-C', underlying: 'ETH', strike: 3_500n * SPOT_SCALE, kind: 'Call',
-  fundingIndex: 0n, lastMark: 12n * USDC_UNIT, lastEpoch: 0n, netTraderSize: 0n, active: true,
+  fundingIndex: 0n, lastMark: 12n * USDC_UNIT, lastEpoch: 0n, netTraderSize: 0n, active: true, refMark: null, refSpot: null,
 };
 const series = new Map([[call3500.id, call3500]]);
 const spots = { ETH: { price: 3_500n * SPOT_SCALE, tsNs: 0n } };

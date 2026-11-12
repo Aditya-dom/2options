@@ -9,6 +9,8 @@ const FRIENDLY: Array<[RegExp, string]> = [
   [/insufficient margin for this trade/, 'Not enough margin for this trade. Deposit more USDC or reduce the size.'],
   [/vault risk limit reached|vault cannot fund this trade/, 'The vault cannot take on more risk right now. Try a smaller size or the other side.'],
   [/spot price is stale/, 'Prices are paused while the spot feed catches up. Try again in a few seconds.'],
+  [/price is too far from the last funding mark/, 'This price is too far from the last funding settlement. Get a fresh quote; if it keeps happening, the price agent may be misbehaving.'],
+  [/vault outflow limit reached/, 'The vault has paid out its limit for this hour. Try again after the next funding settlement.'],
   [/price is outside the allowed band/, 'The quoted price is outside the allowed band. This should not happen with the real agent; please report it.'],
   [/withdrawal would leave the account under-margined/, 'That withdrawal would leave your positions under-margined. Close or reduce positions first.'],
   [/account owes funding/, 'Your account owes funding. Deposit enough to cover it before withdrawing.'],

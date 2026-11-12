@@ -15,6 +15,7 @@
 
 pub mod margin;
 pub mod math;
+mod migrate;
 pub mod types;
 
 use margin::*;
@@ -54,6 +55,7 @@ enum StorageKey {
     Spot,
     LpShares,
     LpClaims,
+    MarkRefs,
 }
 
 #[near(contract_state)]
@@ -86,6 +88,15 @@ pub struct TwoOptions {
     sum_collateral: i128,
     /// USDC ever received minus USDC ever sent out, micros.
     net_inflow: i128,
+
+    /// Last funding mark per series and the spot it was set at.
+    mark_refs: LookupMap<String, MarkRef>,
+    /// Funding interval the outflow figures below belong to.
+    out_epoch: u64,
+    /// Net cash the vault paid to traders in `out_epoch` (receipts subtract), micros.
+    epoch_net_out: i128,
+    /// Vault cash when `out_epoch` began.
+    epoch_start_cash: i128,
 }
 
 #[near]
@@ -111,9 +122,22 @@ impl TwoOptions {
             lp_pending_total: 0,
             sum_collateral: 0,
             net_inflow: 0,
+            mark_refs: LookupMap::new(StorageKey::MarkRefs),
+            out_epoch: 0,
+            epoch_net_out: 0,
+            epoch_start_cash: 0,
         };
         this.agent_keys = Self::parse_keys(agent_keys);
         this
+    }
+
+    /// Upgrade a contract deployed before `mark_refs` and the outflow cap existed. Called by the
+    /// contract account itself in the same transaction as the code deploy. Reading the old
+    /// layout fails on already-migrated state, so it cannot run twice.
+    #[private]
+    #[init(ignore_state)]
+    pub fn migrate() -> Self {
+        migrate::from_v1()
     }
 
     // -----------------------------------------------------------------------------------------
@@ -336,6 +360,13 @@ impl TwoOptions {
         let spot = self.spot_or_panic(series.underlying);
         let (lo, hi) = price_band(series.kind, spot, series.strike, &self.params);
         require!(price >= lo && price <= hi, "price is outside the allowed band");
+        if let Some(r) = self.mark_refs.get(&quote.series) {
+            // An option's price moves no more than spot does, so the mark plus spot's move since
+            // the mark (plus a small allowance for volatility) bounds any honest price.
+            let moved = (spot - r.spot).abs() / SPOT_TO_USDC;
+            let allowance = mul_div_floor(spot_usdc(spot), self.params.mark_band_bps as i128, BPS);
+            require!((price - r.mark).abs() <= add(moved, allowance), "price is too far from the last funding mark");
+        }
 
         let mut acct = self.accounts.get(&taker).cloned().expect("deposit first");
         require!(quote.nonce.0 > acct.last_nonce, "nonce already used");
@@ -354,9 +385,19 @@ impl TwoOptions {
             mul_div_floor(price, size, SIZE_SCALE)
         };
         let trader_cash_change = if quote.side == Side::Buy { -cash } else { cash };
+        self.roll_outflow_epoch(now);
         self.change_collateral(&mut acct, trader_cash_change);
         self.vault_cash = sub(self.vault_cash, trader_cash_change);
         require!(self.vault_cash >= 0, "vault cannot fund this trade");
+        // Hourly cap on what the vault pays out net, so a misbehaving agent key cannot drain it
+        // with round trips (which never raise the vault's risk, so the risk limit cannot stop them).
+        self.epoch_net_out = add(self.epoch_net_out, trader_cash_change);
+        if trader_cash_change > 0 {
+            require!(
+                mul(self.epoch_net_out, BPS) <= mul(self.epoch_start_cash, self.params.max_epoch_outflow_bps as i128),
+                "vault outflow limit reached for this hour"
+            );
+        }
 
         // Position leg.
         let idx = acct.positions.iter().position(|p| p.series == quote.series);
@@ -474,6 +515,7 @@ impl TwoOptions {
         s.last_mark = mark;
         s.last_mark_ts = now;
         s.last_epoch = epoch;
+        self.mark_refs.insert(update.series.clone(), MarkRef { mark, spot });
         emit(
             "FundingSettled",
             serde_json::json!({
@@ -658,15 +700,16 @@ impl TwoOptions {
     }
 
     pub fn get_series(&self, series: String) -> Option<SeriesView> {
-        self.series.get(&series).map(|s| series_view(&series, s))
+        self.series.get(&series).map(|s| series_view(&series, s, self.mark_refs.get(&series)))
     }
 
     pub fn list_series(&self) -> Vec<SeriesView> {
-        self.series.iter().map(|(id, s)| series_view(id, s)).collect()
+        self.series.iter().map(|(id, s)| series_view(id, s, self.mark_refs.get(id))).collect()
     }
 
     pub fn get_vault(&self) -> VaultView {
         let risk = self.vault_risk();
+        let now_epoch = env::block_timestamp() / self.params.funding_interval_ns;
         VaultView {
             cash: I128(self.vault_cash),
             total_shares: U128(self.total_shares),
@@ -674,6 +717,10 @@ impl TwoOptions {
             insurance: I128(self.insurance),
             equity: risk.map(|r| I128(r.0)),
             requirement: risk.map(|r| I128(r.1)),
+            // As the next trade would see it: a new interval starts from zero at today's cash.
+            epoch: U64(now_epoch),
+            epoch_net_outflow: I128(if now_epoch == self.out_epoch { self.epoch_net_out } else { 0 }),
+            epoch_start_cash: I128(if now_epoch == self.out_epoch { self.epoch_start_cash } else { self.vault_cash }),
         }
     }
 
@@ -753,6 +800,8 @@ impl TwoOptions {
         require!(p.max_spot_jump_bps >= 100 && p.max_spot_jump_bps <= 5_000, "bad jump limit");
         require!(p.min_deposit >= 1, "min deposit must be positive");
         require!(p.min_lp_liquidity >= 1, "min lp liquidity must be positive");
+        require!(p.mark_band_bps >= 10 && p.mark_band_bps <= 10_000, "bad mark band");
+        require!(p.max_epoch_outflow_bps >= 1 && p.max_epoch_outflow_bps <= 10_000, "bad outflow cap");
     }
 
     fn verify_agent_signature<T: BorshSerialize>(&self, domain: &[u8], msg: &T, signature: &[u8]) {
@@ -778,6 +827,16 @@ impl TwoOptions {
             NearToken::from_yoctonear(1),
             GAS_FT_TRANSFER,
         )
+    }
+
+    /// Start a new outflow interval when the funding interval has moved on.
+    fn roll_outflow_epoch(&mut self, now: u64) {
+        let e = now / self.params.funding_interval_ns;
+        if e != self.out_epoch {
+            self.out_epoch = e;
+            self.epoch_net_out = 0;
+            self.epoch_start_cash = self.vault_cash;
+        }
     }
 
     fn change_collateral(&mut self, acct: &mut Account, delta: i128) {
@@ -901,7 +960,7 @@ fn series_id(underlying: Underlying, strike: i128, kind: Kind) -> String {
     format!("{}-{}-{}", underlying, strike / 100_000_000, letter)
 }
 
-fn series_view(id: &str, s: &Series) -> SeriesView {
+fn series_view(id: &str, s: &Series, r: Option<&MarkRef>) -> SeriesView {
     SeriesView {
         id: id.to_string(),
         underlying: s.underlying,
@@ -912,6 +971,8 @@ fn series_view(id: &str, s: &Series) -> SeriesView {
         last_epoch: U64(s.last_epoch),
         net_trader_size: I128(s.net_trader_size),
         active: s.active,
+        ref_mark: r.map(|r| U128(r.mark as u128)),
+        ref_spot: r.map(|r| U128(r.spot as u128)),
     }
 }
 

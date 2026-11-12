@@ -77,7 +77,7 @@ What each party can and cannot do. "Bounded" means the contract enforces a limit
 |---|---|---|
 | **Trader** | Trade at a signed price, withdraw free collateral to their own account | Withdraw margin backing a short; reuse or alter a quote; use someone else's quote |
 | **LP** | Deposit, redeem at the share price after a cooldown | Redeem capital that backs open risk |
-| **Agent key** | Set prices, spot and funding **inside the contract's bands** | Move funds; quote outside intrinsic -0.2% / +4% of spot; move spot more than 10% between fresh posts; charge more than 5% of mark per hour; replay any message |
+| **Agent key** | Set prices, spot and funding **inside the contract's bands** | Move funds; quote outside intrinsic -0.2% / +4% of spot; quote more than 1% of spot (plus spot's move since) from the last funding mark; make the vault pay out more than 10% of its cash per hour; move spot more than 10% between fresh posts; charge more than 5% of mark per hour; replay any message |
 | **Keeper** | Relay signed spot and funding, call `liquidate`; delay them by going offline | Forge them, or change a number |
 | **Owner** | Pause deposits and trading, set parameters within validated ranges, rotate agent keys, list series | Move user funds; block withdrawals, claims or liquidations by pausing |
 | **Anyone** | Liquidate an account below the liquidation ratio | Liquidate a healthy one |
@@ -93,7 +93,7 @@ Controls, all in `contracts/twooptions/src/lib.rs`:
 
 ### Known weaknesses
 
-1. **A compromised agent key can trade against the vault at the edge of the band** until the vault's risk limit stops it. The band is wide (up to 4% of spot above intrinsic with the testnet preset) because it has to hold the fair price in a volatile market. The owner rotating keys is the response. A band around the last attested mark and a per-epoch loss cap would narrow it; neither is built.
+1. **A compromised agent key can still cost the vault up to 10% of its cash per hour.** Round trips are the attack: buy from the vault at the bottom of the allowed price range and sell straight back at the top. Each round trip *lowers* the vault's risk, so the vault's risk limit never stops it. Two contract rules bound it: every trade price must sit within 1% of spot, plus spot's move since, of the series' last funding mark (an option's price moves no more than spot does, so honest quotes fit), and the vault's net payout to traders per funding hour is capped at 10% of its cash at the start of that hour. The response to a leaked key is the owner pausing trading and rotating the key (`set_agent_keys`) within that hour. Running the agent in a TEE would remove the operator from the trust model; that is not built (NEAR's Shade Agent Framework is deprecated, and its listed alternative, OutLayer, cannot host a quote server).
 2. **Spot is agent-signed.** There is no independent oracle on chain. The feed takes the median of four venues and refuses to post when they disagree, but that logic runs off chain.
 3. **A quote is a short free option.** A taker can hold a signed quote for its lifetime (28 s with the preset) and use it only if spot moved their way. The spread is the only compensation.
 4. **Stale marks.** Between funding settlements, longs are valued at intrinsic and shorts at the last mark clamped to the band. Equity is conservative on both sides, but the LP share price can lag fast moves in time value.
@@ -128,9 +128,9 @@ Then set `VITE_CONTRACT_ID`, `VITE_USDC_ID` and `VITE_AGENT_URL` in `app/.env`.
 
 | Piece | State |
 |---|---|
-| Contract | Deployed on testnet. 71 unit tests, clippy clean. No sandbox tests, no gas numbers. Unaudited |
+| Contract | Deployed on testnet. 77 unit tests, clippy clean. No sandbox tests, no gas numbers. Unaudited |
 | Test USDC | Deployed on testnet. 5 unit tests |
-| Agent: pricing, quotes, keeper, API | Running against testnet: posts spot every 5 s, settles funding hourly, signs quotes. 111 unit tests |
+| Agent: pricing, quotes, keeper, API | Running against testnet: posts spot every 5 s, settles funding hourly, signs quotes. 113 unit tests |
 | End to end | `agent/scripts/e2e_testnet.py`: 27 checks with real transactions (deposit, trades, rejected replays and forgeries, two-leg batch, withdraw, LP deposit and redeem, close-out, solvency) |
 | Wire format | Byte-for-byte parity between the contract, the agent and the app, signatures included |
 | Margin | The app's and the agent's ports match the contract on a 2,697-case generated fixture |

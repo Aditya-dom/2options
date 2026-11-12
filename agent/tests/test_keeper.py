@@ -115,26 +115,17 @@ def test_funding_charges_one_twenty_fourth_of_time_value(rig: Rig) -> None:
         assert int(h["per_contract"]) == pytest.approx((int(h["mark"]) - intr) / 24, abs=2)
 
 
-def test_funding_uses_the_average_mark_of_the_epoch_that_ended(rig: Rig) -> None:
-    rig.chain.now_ns = T0 + 10 * SEC
-    rig.chain.set_spot("ETH", 2_110, age_s=5)
-    low, high = Decimal("2100"), Decimal("2120")
-    marks = []
-    for i in range(6):  # samples during epoch N
-        rig.price = low if i % 2 == 0 else high
-        rig.post()
-        marks.append(
-            rig.quoter.rows(fetch_snapshot(rig.chain.view, rig.chain.now_ns), rig.chain.now_ns)
-        )
-        rig.advance(5)
-    expected = sum(r.mark for rows in marks for r in rows if r.series == "ETH-2100-C") // 6
-
-    rig.chain.now_ns = T0 + HOUR + 20 * SEC  # epoch N + 1
-    rig.price = high
-    rig.post()
+def test_funding_settles_at_the_current_mark_and_spot(rig: Rig) -> None:
+    # The contract anchors the next hour's trade prices to this mark and the spot it records,
+    # so the mark must be the price at that spot (not an average over the hour).
+    rig.chain.now_ns = T0 + HOUR + 20 * SEC
+    rig.chain.set_spot("ETH", 2_110)
     rig.keeper.tick_funding(rig.chain.now_ns)
-    h = rig.store.funding_history("ETH-2100-C", 1)[0]
-    assert int(h["mark"]) == expected
+    snap = fetch_snapshot(rig.chain.view, rig.chain.now_ns)
+    row = {r.series: r for r in rig.quoter.rows(snap, rig.chain.now_ns)}["ETH-2100-C"]
+    s = snap.series["ETH-2100-C"]
+    assert s.ref_mark == row.mark
+    assert s.ref_spot == 2_110 * 10**8
 
 
 def test_one_series_failing_does_not_block_the_others(rig: Rig) -> None:

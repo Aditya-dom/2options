@@ -60,16 +60,6 @@ class KeeperConfig:
 
 
 @dataclass
-class _Twap:
-    epoch: int
-    total: int = 0
-    n: int = 0
-
-    def mean(self) -> int:
-        return self.total // self.n
-
-
-@dataclass
 class KeeperStatus:
     last_spot_post_ns: dict[str, int] = field(default_factory=dict)
     last_spot_hold: dict[str, str] = field(default_factory=dict)
@@ -108,9 +98,6 @@ class Keeper:
         self.store = store
         self.cfg = cfg or KeeperConfig()
         self.status = KeeperStatus()
-        # Marks sampled during the running epoch and the finished one before it, per series.
-        self._twap: dict[str, _Twap] = {}
-        self._twap_done: dict[str, _Twap] = {}
         self._seeded = False
         self._warned_no_account = False
 
@@ -157,19 +144,7 @@ class Keeper:
             self.status.last_spot_hold.pop(name, None)
             self.quoter.observe_spot(d.underlying, d.update.price, d.update.ts_ns)
         if posted:
-            self._sample_marks(self.cache.refresh(), now_ns)
-
-    def _sample_marks(self, snap: Snapshot, now_ns: int | None) -> None:
-        now = now_ns if now_ns is not None else time.time_ns()
-        epoch = now // snap.params.funding_interval_ns
-        for row in self.quoter.rows(snap, now):
-            t = self._twap.get(row.series)
-            if t is None or t.epoch != epoch:
-                if t is not None and t.n:
-                    self._twap_done[row.series] = t
-                t = self._twap[row.series] = _Twap(epoch)
-            t.total += row.mark
-            t.n += 1
+            self.cache.refresh()
 
     # -- funding ------------------------------------------------------------------------------
 
@@ -193,16 +168,9 @@ class Keeper:
             if row is None or spot is None:
                 log.warning("funding %s epoch %d waits for a fresh spot", s.id, epoch)
                 continue
-            # Average mark over the epoch that just ended, when we watched it; else the mark now.
-            # Either way it must sit in the band around the current spot, as the contract checks.
-            done = self._twap_done.get(s.id)
-            running = self._twap.get(s.id)
-            if done is not None and done.epoch == epoch - 1:
-                mark = done.mean()
-            elif running is not None and running.epoch == epoch - 1 and running.n:
-                mark = running.mean()
-            else:
-                mark = row.mark
+            # The current mark. The contract anchors the next hour's trade prices to it and to
+            # the spot it records with it, so it must be the price at that spot, not an average.
+            mark = row.mark
             lo, hi = margin.price_band(s.is_call, spot, s.strike, snap.params.margin)
             mark = max(lo, min(hi, mark))
             intr = margin.intrinsic(s.is_call, spot, s.strike)

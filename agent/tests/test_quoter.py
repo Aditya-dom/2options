@@ -176,8 +176,10 @@ def test_vault_limits_are_checked_before_signing(chain: FakeChain) -> None:
     # It cannot pay for 100 contracts sold to it either.
     with pytest.raises(QuoteError, match="vault cannot fund this trade"):
         q.quote(snap, "ETH-2100-C", Side.Sell, 100 * ONE, "alice.testnet", chain.now_ns)
-    # Buying from a trader only makes the vault long: no risk limit applies.
-    q.quote(snap, "ETH-2100-C", Side.Sell, ONE, "alice.testnet", chain.now_ns)
+    # Buying from a trader only makes the vault long, so no risk limit applies; but paying out
+    # ~$28 is more than 10% of a 100 USDC vault, so the hourly outflow cap does.
+    with pytest.raises(QuoteError, match="vault outflow limit reached"):
+        q.quote(snap, "ETH-2100-C", Side.Sell, ONE, "alice.testnet", chain.now_ns)
 
     # A trade that reduces the vault's existing short is always allowed, however thin the vault.
     chain.vault_cash = 2_000 * 10**6
@@ -212,3 +214,60 @@ def test_realized_vol_lifts_the_quote_but_never_lowers_it(chain: FakeChain) -> N
     for i in range(400):
         quiet.observe_spot(Underlying.ETH, 2_110 * 10**8, i * 5 * SEC)
     assert quiet.atm_vol(Underlying.ETH) == 0.6
+
+
+def test_a_quote_far_from_the_funding_mark_is_refused_before_signing(chain: FakeChain) -> None:
+    snap = fetch_snapshot(chain.view, chain.now_ns)
+    q = quoter()
+    ask = q.row(snap.series["ETH-2100-C"], 2_110 * 10**8, snap).ask
+    # Anchor the series at a mark 2% of spot (about $42) below today's ask, at today's spot.
+    chain.series["ETH-2100-C"]["ref_mark"] = str(ask - 42 * 10**6)
+    chain.series["ETH-2100-C"]["ref_spot"] = str(2_110 * 10**8)
+    snap = fetch_snapshot(chain.view, chain.now_ns)
+    with pytest.raises(QuoteError, match="too far from the last funding mark") as e:
+        q.quote(snap, "ETH-2100-C", Side.Buy, ONE, "alice.testnet", chain.now_ns)
+    assert e.value.status == 409
+    # Spot has since moved $30: the allowance grows by that much and the quote fits again.
+    chain.series["ETH-2100-C"]["ref_spot"] = str(2_080 * 10**8)
+    q.quote(
+        fetch_snapshot(chain.view, chain.now_ns),
+        "ETH-2100-C",
+        Side.Buy,
+        ONE,
+        "alice.testnet",
+        chain.now_ns,
+    )
+
+
+def test_the_hourly_outflow_cap_counts_what_the_vault_already_paid(chain: FakeChain) -> None:
+    chain.vault_cash = 10_000 * 10**6  # cap: 1,000 USDC this hour
+    q = quoter()
+    q.quote(
+        fetch_snapshot(chain.view, chain.now_ns),
+        "ETH-2100-C",
+        Side.Sell,
+        10 * ONE,
+        "alice.testnet",
+        chain.now_ns,
+    )
+    # 980 already paid out this hour: a further ~$28 payout would cross the cap.
+    chain.out_epoch = chain.now_ns // chain.params["funding_interval_ns"]
+    chain.epoch_net_out, chain.epoch_start_cash = 980 * 10**6, 10_000 * 10**6
+    with pytest.raises(QuoteError, match="vault outflow limit reached"):
+        q.quote(
+            fetch_snapshot(chain.view, chain.now_ns),
+            "ETH-2100-C",
+            Side.Sell,
+            ONE,
+            "alice.testnet",
+            chain.now_ns,
+        )
+    # Selling to the trader brings cash in, so it is never capped.
+    q.quote(
+        fetch_snapshot(chain.view, chain.now_ns),
+        "ETH-2100-C",
+        Side.Buy,
+        ONE,
+        "alice.testnet",
+        chain.now_ns,
+    )

@@ -43,6 +43,8 @@ PARAMS: dict[str, Any] = {
     "tv_reserve_bps": 100,
     "min_margin_per_contract": 5_000_000,
     "max_spot_jump_bps": 1_000,
+    "mark_band_bps": 100,
+    "max_epoch_outflow_bps": 1_000,
 }
 
 
@@ -73,6 +75,10 @@ class FakeChain:
     paused: bool = False
     account_id: str = "keeper.testnet"
     calls: list[tuple[str, dict[str, Any]]] = field(default_factory=list)
+    # The vault's net payout in the current funding interval (the contract's outflow cap).
+    out_epoch: int = -1
+    epoch_net_out: int = 0
+    epoch_start_cash: int = 0
     fail_next: str | None = None
 
     def add_series(self, *ids: str) -> None:
@@ -95,7 +101,14 @@ class FakeChain:
             sp = self.spots.get(a["underlying"])
             return None if sp is None else [str(sp[0]), str(sp[1])]
         if method == "get_vault":
-            return {"cash": str(self.vault_cash)}
+            epoch = self.now_ns // self.params["funding_interval_ns"]
+            same = epoch == self.out_epoch
+            return {
+                "cash": str(self.vault_cash),
+                "epoch": str(epoch),
+                "epoch_net_outflow": str(self.epoch_net_out if same else 0),
+                "epoch_start_cash": str(self.epoch_start_cash if same else self.vault_cash),
+            }
         if method == "is_paused":
             return self.paused
         if method == "get_account":
@@ -162,6 +175,8 @@ class FakeChain:
             s["funding_index"] = str(int(s["funding_index"]) + rate * f.mark // 10**9)
             s["last_mark"] = str(f.mark)
             s["last_epoch"] = str(f.epoch)
+            s["ref_mark"] = str(f.mark)
+            s["ref_spot"] = str(spot)
         elif method == "liquidate":
             if self.account_id not in self.accounts:
                 raise TxError("liquidator needs an account to receive the reward")

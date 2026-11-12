@@ -77,6 +77,10 @@ export default function VaultPage({ onFunds }: { onFunds: (m: FundsMode) => void
             <Row label="Insurance fund" value={fmtUsdc(vault.insurance)} />
             <Row label="Pending LP claims" value={fmtUsdc(vault.pendingClaims)} />
             <Row label="Redeem cooldown" value={fmtDuration(Number(params.lp_cooldown_ns / NS_PER_MS))} />
+            {vault.epochNetOutflow != null && vault.epochStartCash != null && (
+              <Row label="Paid to traders this hour"
+                value={`${fmtUsdc(vault.epochNetOutflow > 0n ? vault.epochNetOutflow : 0n)} of ${fmtUsdc((vault.epochStartCash * params.max_epoch_outflow_bps) / 10_000n)} limit`} />
+            )}
           </div>
           <div style={{ marginTop: 12 }}>
             <Note>

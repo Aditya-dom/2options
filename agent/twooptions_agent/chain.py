@@ -32,6 +32,10 @@ def _int(v: object) -> int:
     return int(str(v))
 
 
+def _opt_int(v: object) -> int | None:
+    return None if v is None else int(str(v))
+
+
 @dataclass(frozen=True)
 class Series:
     id: str
@@ -43,6 +47,9 @@ class Series:
     last_epoch: int
     net_trader_size: int
     active: bool
+    # Last funding mark and the spot it was set at; the contract anchors trade prices to them.
+    ref_mark: int | None = None
+    ref_spot: int | None = None
 
     @classmethod
     def from_view(cls, j: dict[str, Any]) -> Series:
@@ -56,6 +63,8 @@ class Series:
             last_epoch=_int(j["last_epoch"]),
             net_trader_size=_int(j["net_trader_size"]),
             active=bool(j["active"]),
+            ref_mark=_opt_int(j.get("ref_mark")),
+            ref_spot=_opt_int(j.get("ref_spot")),
         )
 
 
@@ -69,6 +78,9 @@ class Params:
     vault_ratio_bps: int
     max_spot_jump_bps: int
     margin: MarginParams
+    # Defaults match the contract's, for a contract that predates these limits.
+    mark_band_bps: int = 100
+    max_epoch_outflow_bps: int = 1_000
 
     @classmethod
     def from_view(cls, j: dict[str, Any]) -> Params:
@@ -81,6 +93,8 @@ class Params:
             vault_ratio_bps=_int(j["vault_ratio_bps"]),
             max_spot_jump_bps=_int(j["max_spot_jump_bps"]),
             margin=MarginParams.from_json(j),
+            mark_band_bps=_int(j.get("mark_band_bps", 100)),
+            max_epoch_outflow_bps=_int(j.get("max_epoch_outflow_bps", 1_000)),
         )
 
 
@@ -98,6 +112,11 @@ class Snapshot:
     vault_cash: int
     paused: bool
     fetched_ns: int
+    # The vault's net cash paid to traders in the current funding interval, and its cash when
+    # the interval began: the contract caps the first at a share of the second.
+    epoch: int = 0
+    epoch_net_outflow: int = 0
+    epoch_start_cash: int = 0
 
     def fresh_spot(self, u: Underlying, now_ns: int) -> int | None:
         """The spot the contract would accept right now, or None if it would call it stale."""
@@ -124,6 +143,9 @@ def fetch_snapshot(
         series=series,
         spots=spots,
         vault_cash=_int(vault["cash"]),
+        epoch=_int(vault.get("epoch", 0)),
+        epoch_net_outflow=_int(vault.get("epoch_net_outflow", 0)),
+        epoch_start_cash=_int(vault.get("epoch_start_cash", vault["cash"])),
         paused=bool(view("is_paused", None)) if paused is None else paused,
         fetched_ns=now_ns if now_ns is not None else time.time_ns(),
     )

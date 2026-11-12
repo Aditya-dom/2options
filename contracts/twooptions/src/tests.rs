@@ -840,6 +840,10 @@ struct Snapshot {
     accounts: Vec<(AccountId, Option<Account>)>,
     series: Vec<(String, Series)>,
     spot: Option<SpotPoint>,
+    mark_refs: Vec<(String, Option<MarkRef>)>,
+    out_epoch: u64,
+    epoch_net_out: i128,
+    epoch_start_cash: i128,
 }
 
 const TOUCHED: [&str; 4] = ["alice.near", "bob.near", "carol.near", "keeper.near"];
@@ -858,10 +862,27 @@ impl Snapshot {
             accounts: TOUCHED.iter().map(|n| (acct(n), c.accounts.get(&acct(n)).cloned())).collect(),
             series: SERIES_IDS.iter().map(|id| (id.to_string(), c.series.get(*id).cloned().unwrap())).collect(),
             spot: c.spot.get(&Underlying::ETH).copied(),
+            mark_refs: SERIES_IDS.iter().map(|id| (id.to_string(), c.mark_refs.get(*id).copied())).collect(),
+            out_epoch: c.out_epoch,
+            epoch_net_out: c.epoch_net_out,
+            epoch_start_cash: c.epoch_start_cash,
         }
     }
 
     fn restore(self, c: &mut TwoOptions) {
+        for (id, r) in self.mark_refs {
+            match r {
+                Some(r) => {
+                    c.mark_refs.insert(id, r);
+                }
+                None => {
+                    c.mark_refs.remove(&id);
+                }
+            }
+        }
+        c.out_epoch = self.out_epoch;
+        c.epoch_net_out = self.epoch_net_out;
+        c.epoch_start_cash = self.epoch_start_cash;
         c.vault_cash = self.vault_cash;
         c.insurance = self.insurance;
         c.lp_pending_total = self.lp_pending_total;
@@ -978,4 +999,164 @@ fn ledger_invariant_holds_over_a_random_operation_mix() {
     assert!(trades > 20, "trades {trades}");
     assert!(liquidations > 0, "the run never liquidated anything");
     println!("random run: {completed} completed, {reverted} reverted, {trades} trades, {liquidations} liquidations");
+}
+
+// ---------------------------------------------------------------------------------------------
+// Limits on a misbehaving agent key: prices anchored to the funding mark, hourly outflow cap
+// ---------------------------------------------------------------------------------------------
+
+fn trade_err(h: &mut Harness, who: &str, series: &str, side: Side, contracts: f64, price_usd: f64) -> String {
+    let (q, sig) = h.quote(who, series, side, contracts, price_usd);
+    h.as_user(who);
+    // A failed transaction changes nothing on chain; undo what the panic left behind here.
+    let before = Snapshot::take(&h.c);
+    let c = &mut h.c;
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.trade(q, sig)));
+    match r {
+        Ok(()) => String::new(),
+        Err(e) => {
+            before.restore(&mut h.c);
+            e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default()
+        }
+    }
+}
+
+#[test]
+fn a_signed_price_far_from_the_funding_mark_is_rejected() {
+    let mut h = ready();
+    h.funding("ETH-3500-C", 0, 12.0);
+    // 50 is inside the static band (intrinsic 0 + 1.5% of 3,500 = 52.5) but 38 from the mark,
+    // more than the 1% allowance (35).
+    assert!(trade_err(&mut h, "alice.near", "ETH-3500-C", Side::Buy, 1.0, 50.0).contains("too far from the last funding mark"));
+    assert_eq!(trade_err(&mut h, "alice.near", "ETH-3500-C", Side::Buy, 1.0, 45.0), "");
+    h.assert_solvent();
+}
+
+#[test]
+fn the_mark_allowance_widens_by_however_far_spot_has_moved() {
+    let mut h = ready();
+    h.funding("ETH-3500-C", 0, 12.0);
+    h.advance(10);
+    h.spot(3_560);
+    // Spot is up 60: the call may now trade up to 12 + 60 + 35.6 = 107.6.
+    assert_eq!(trade_err(&mut h, "alice.near", "ETH-3500-C", Side::Buy, 1.0, 100.0), "");
+    assert!(trade_err(&mut h, "alice.near", "ETH-3500-C", Side::Buy, 1.0, 110.0).contains("too far from the last funding mark"));
+    let view = h.c.get_series("ETH-3500-C".into()).unwrap();
+    assert_eq!((view.ref_mark.unwrap().0, view.ref_spot.unwrap().0), (12 * USDC, (3_500 * USD) as u128));
+}
+
+#[test]
+fn round_trips_at_the_band_edges_stop_at_the_hourly_outflow_cap() {
+    // A stolen agent key signs buys at the bottom of the band and sells at the top. Each round
+    // trip lowers the vault's risk, so the risk limit never stops it; the outflow cap does.
+    let mut h = ready();
+    let start = h.c.vault_cash;
+    let cap = start / 10; // 10% of vault cash per funding interval
+    let mut trips = 0;
+    loop {
+        assert_eq!(trade_err(&mut h, "alice.near", "ETH-4000-C", Side::Buy, 10.0, 0.0), "");
+        let err = trade_err(&mut h, "alice.near", "ETH-4000-C", Side::Sell, 10.0, 52.0);
+        if !err.is_empty() {
+            assert!(err.contains("vault outflow limit reached"), "{err}");
+            break;
+        }
+        trips += 1;
+        assert!(trips < 100, "the cap never triggered");
+    }
+    let paid = start - h.c.vault_cash;
+    assert!(paid <= cap && paid > cap - 520 * USDC as i128, "paid {paid}, cap {cap}");
+    let v = h.c.get_vault();
+    assert_eq!(v.epoch_net_outflow.0, paid);
+    assert_eq!(v.epoch_start_cash.0, start);
+    h.assert_solvent();
+
+    // The next funding interval starts from zero, capped at 10% of the cash left.
+    h.advance(3_600);
+    h.spot(3_500);
+    assert_eq!(trade_err(&mut h, "alice.near", "ETH-4000-C", Side::Sell, 10.0, 52.0), "");
+    assert_eq!(h.c.get_vault().epoch_start_cash.0, start - paid);
+}
+
+#[test]
+fn trades_the_vault_is_paid_for_never_count_against_the_cap() {
+    let mut h = ready();
+    for _ in 0..30 {
+        assert_eq!(trade_err(&mut h, "alice.near", "ETH-3500-C", Side::Buy, 1.0, 40.0), "");
+    }
+    assert!(h.c.get_vault().epoch_net_outflow.0 < 0);
+}
+
+#[test]
+fn the_new_limits_are_validated() {
+    let mut h = ready();
+    h.as_user("owner.near");
+    let c = &mut h.c;
+    for (band, cap, msg) in [(5u32, 1_000u32, "bad mark band"), (100, 0, "bad outflow cap"), (100, 10_001, "bad outflow cap")] {
+        let p = Params { mark_band_bps: band, max_epoch_outflow_bps: cap, ..Params::default() };
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.set_params(p)));
+        let e = r.unwrap_err();
+        let text = e.downcast_ref::<String>().cloned().unwrap_or_default();
+        assert!(text.contains(msg), "{text}");
+    }
+}
+
+#[test]
+fn migration_keeps_every_balance_and_adds_the_new_limits() {
+    let mut h = ready();
+    h.trade("alice.near", "ETH-3500-C", Side::Buy, 2.0, 12.0);
+    let alice_before = h.collateral("alice.near");
+    let cash_before = h.c.vault_cash;
+    let solvency_before = h.c.get_solvency();
+
+    // Write the state exactly as the previous contract version stored it.
+    let mut c = std::mem::replace(&mut h.c, TwoOptions::new(acct("x.near"), acct("y.near"), vec![]));
+    c.accounts.flush();
+    c.series.flush();
+    c.spot.flush();
+    c.lp_shares.flush();
+    c.lp_claims.flush();
+    let old = migrate::OldState {
+        owner_id: c.owner_id.clone(),
+        pending_owner: c.pending_owner.clone(),
+        usdc: c.usdc.clone(),
+        paused: c.paused,
+        params: migrate::OldParams {
+            max_quote_ttl_ns: c.params.max_quote_ttl_ns, max_spot_age_ns: c.params.max_spot_age_ns,
+            max_positions: c.params.max_positions, max_funding_rate: c.params.max_funding_rate,
+            funding_interval_ns: c.params.funding_interval_ns, liquidation_reward_bps: c.params.liquidation_reward_bps,
+            insurance_bps: c.params.insurance_bps, lp_cooldown_ns: c.params.lp_cooldown_ns,
+            min_lp_liquidity: c.params.min_lp_liquidity, min_deposit: c.params.min_deposit,
+            initial_ratio_bps: c.params.initial_ratio_bps, close_only_ratio_bps: c.params.close_only_ratio_bps,
+            liquidation_ratio_bps: c.params.liquidation_ratio_bps, vault_ratio_bps: c.params.vault_ratio_bps,
+            max_time_value_bps: 400, min_time_value_bps: c.params.min_time_value_bps,
+            tv_reserve_bps: c.params.tv_reserve_bps, min_margin_per_contract: c.params.min_margin_per_contract,
+            max_spot_jump_bps: c.params.max_spot_jump_bps,
+        },
+        agent_keys: c.agent_keys.clone(),
+        accounts: c.accounts,
+        series: c.series,
+        spot: c.spot,
+        lp_shares: c.lp_shares,
+        lp_claims: c.lp_claims,
+        total_shares: c.total_shares,
+        locked_shares: c.locked_shares,
+        vault_cash: c.vault_cash,
+        insurance: c.insurance,
+        lp_pending_total: c.lp_pending_total,
+        sum_collateral: c.sum_collateral,
+        net_inflow: c.net_inflow,
+    };
+    env::state_write(&old);
+
+    h.c = TwoOptions::migrate();
+    assert_eq!(h.collateral("alice.near"), alice_before);
+    assert_eq!(h.c.vault_cash, cash_before);
+    assert_eq!(h.c.list_series().len(), 3);
+    assert_eq!(h.c.get_params().max_time_value_bps, 400); // carried over, not reset
+    assert_eq!((h.c.get_params().mark_band_bps, h.c.get_params().max_epoch_outflow_bps), (100, 1_000));
+    let s = h.c.get_solvency();
+    assert_eq!((s.ledger_total.0, s.net_inflow.0), (solvency_before.ledger_total.0, solvency_before.net_inflow.0));
+    // Trading works after the upgrade.
+    assert_eq!(trade_err(&mut h, "alice.near", "ETH-3500-C", Side::Sell, 1.0, 12.0), "");
+    h.assert_solvent();
 }

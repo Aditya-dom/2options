@@ -6,7 +6,7 @@ Everlasting-options vault and settlement contract for NEAR. Source: [twooptions/
 
 ```bash
 cd contracts/twooptions
-cargo test --lib                                                    # 71 unit tests
+cargo test --lib                                                    # 77 unit tests
 cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
 cargo build --lib --target wasm32-unknown-unknown --release         # ~530 KB wasm
 ```
@@ -35,7 +35,16 @@ Bootstrap applies these parameters on top of `Params::default()`, because the ag
 | `tv_reserve_bps` | 100 | 150 | Reserve per short contract, sized to the larger time value. Not calibrated |
 | `max_quote_ttl_ns` | 10 s | 30 s | Multi-leg strategies need every leg quoted and then one wallet confirmation |
 
-A wider band and a longer TTL also widen what a compromised agent key could do (limitation 1). They are the price of quoting at high vol and of one-confirmation strategies.
+A wider band and a longer TTL also widen what a compromised agent key could do (limitation 1). They are the price of quoting at high vol and of one-confirmation strategies; the two limits below bound the damage.
+
+### Limits on the agent key
+
+| Parameter | Default | What it does |
+|---|---|---|
+| `mark_band_bps` | 100 | A trade's price must be within this share of spot, plus however far spot has moved, of the series' last funding mark. An option's price moves no more than spot does, so an honest quote fits; a skewed one does not. Series without a funding mark yet are bound only by the static band. |
+| `max_epoch_outflow_bps` | 1,000 | The vault's net cash paid to traders within one funding interval may not exceed this share of its cash at the start of the interval. Trades the vault is paid for never count against it. |
+
+Both were added by an upgrade (`admin upgrade --migrate`): the new code and a call to `migrate()` go in one transaction, which rewrites only the root state and keeps every collection. `src/migrate.rs` holds the previous layout; a unit test migrates real old-layout state and checks every balance.
 
 ## Test USDC (`test-usdc/`)
 
@@ -95,7 +104,7 @@ The JSON API takes 64 and 128-bit numbers as strings (`U128`, `U64`, `I128`).
 
 ## Known limitations (read before demoing)
 
-1. **The agent key is trusted within the band.** The band is intrinsic value minus 0.2% of spot up to intrinsic plus 1.5% of spot (about $52 on ETH at 3,500, against a real ATM price near $12). A compromised key colluding with a trader could still trade at the favourable edge until the vault risk limit stops it. The band and the vault limit cap the damage but do not remove it. Mitigations still to add: a band around the last attested mark, a per-epoch loss cap for the vault, and key rotation (`set_agent_keys`) as the emergency response.
+1. **The agent key is trusted within limits.** Prices must sit in the static band (intrinsic minus 0.2% of spot up to intrinsic plus the configured share of spot) and within 1% of spot, plus spot's move, of the last funding mark; the vault pays out at most 10% of its cash per funding hour. Without those two limits a stolen key could drain the vault with round trips (buy at the band's bottom, sell back at its top), which lower the vault's risk and so never trip the vault risk limit. With them, the worst case is 10% of vault cash per hour until the owner pauses trading and rotates the key (`set_agent_keys`). The agent does not run in a TEE.
 2. **Spot is agent-signed in v1.** The earlier plan had a permissionless oracle poke. A Pyth cross-check is the right upgrade; it was left out because the call shape could not be verified offline.
 3. **Funding rate and mark come from the agent**, clamped to `max_funding_rate` per settlement and to the price band.
 4. **Marks go stale between hourly funding updates.** Longs are valued at intrinsic only and shorts never below intrinsic, which keeps equity conservative, but LP share prices can lag fast moves in time value.

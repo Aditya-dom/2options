@@ -36,6 +36,9 @@ export interface ParamsJson {
   tv_reserve_bps: number;
   min_margin_per_contract: number;
   max_spot_jump_bps: number;
+  /** Added by the upgrade that anchored prices to the funding mark; absent on older deployments. */
+  mark_band_bps?: number;
+  max_epoch_outflow_bps?: number;
 }
 
 export interface PositionViewJson {
@@ -65,6 +68,8 @@ export interface SeriesViewJson {
   last_epoch: string;
   net_trader_size: string;
   active: boolean;
+  ref_mark?: string | null;
+  ref_spot?: string | null;
 }
 
 export interface VaultViewJson {
@@ -74,6 +79,9 @@ export interface VaultViewJson {
   insurance: string;
   equity: string | null;
   requirement: string | null;
+  epoch?: string;
+  epoch_net_outflow?: string;
+  epoch_start_cash?: string;
 }
 
 /** The agent-signed quote, passed to `trade` exactly as received. Never built client-side. */
@@ -103,6 +111,10 @@ export interface Params extends MarginParams {
   close_only_ratio_bps: bigint;
   liquidation_ratio_bps: bigint;
   vault_ratio_bps: bigint;
+  /** A trade's price must be within this share of spot (plus spot's move) of the last funding mark. */
+  mark_band_bps: bigint;
+  /** The vault's net payout to traders per funding interval, as a share of its cash then. */
+  max_epoch_outflow_bps: bigint;
 }
 
 export interface Position {
@@ -131,6 +143,9 @@ export interface Series {
   lastEpoch: bigint;
   netTraderSize: bigint;
   active: boolean;
+  /** Last funding mark and the spot it was set at: trade prices are anchored to them. */
+  refMark: bigint | null;
+  refSpot: bigint | null;
 }
 
 export interface Vault {
@@ -140,6 +155,9 @@ export interface Vault {
   insurance: bigint;
   equity: bigint | null;
   requirement: bigint | null;
+  /** Net cash paid to traders this funding interval, and the cash it is capped against. */
+  epochNetOutflow: bigint | null;
+  epochStartCash: bigint | null;
 }
 
 export interface SpotPoint {
@@ -152,7 +170,7 @@ export interface LpClaim {
   unlockNs: bigint;
 }
 
-const opt = (v: string | null) => (v == null ? null : big(v));
+const opt = (v: string | null | undefined) => (v == null ? null : big(v));
 
 export function parseParams(j: ParamsJson): Params {
   return {
@@ -167,6 +185,8 @@ export function parseParams(j: ParamsJson): Params {
     close_only_ratio_bps: big(j.close_only_ratio_bps),
     liquidation_ratio_bps: big(j.liquidation_ratio_bps),
     vault_ratio_bps: big(j.vault_ratio_bps),
+    mark_band_bps: big(j.mark_band_bps ?? 100),
+    max_epoch_outflow_bps: big(j.max_epoch_outflow_bps ?? 1_000),
     min_time_value_bps: big(j.min_time_value_bps),
     max_time_value_bps: big(j.max_time_value_bps),
     tv_reserve_bps: big(j.tv_reserve_bps),
@@ -198,6 +218,8 @@ export const parseSeries = (j: SeriesViewJson): Series => ({
   lastEpoch: big(j.last_epoch),
   netTraderSize: big(j.net_trader_size),
   active: j.active,
+  refMark: opt(j.ref_mark),
+  refSpot: opt(j.ref_spot),
 });
 
 export const parseVault = (j: VaultViewJson): Vault => ({
@@ -207,6 +229,8 @@ export const parseVault = (j: VaultViewJson): Vault => ({
   insurance: big(j.insurance),
   equity: opt(j.equity),
   requirement: opt(j.requirement),
+  epochNetOutflow: opt(j.epoch_net_outflow),
+  epochStartCash: opt(j.epoch_start_cash),
 });
 
 /** `Option<(U128, U64)>` serializes as `[price, ts]` or null. */

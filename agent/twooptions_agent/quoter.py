@@ -207,6 +207,7 @@ class Quoter:
         if side == Side.Sell and not row.can_sell:
             raise QuoteError(409, "no bid for this series")
         price = row.ask if side == Side.Buy else row.bid
+        self._check_mark_band(snap, s, spot, price)
         self._check_vault(snap, s, side, size, price, now)
 
         ttl_ns = min(
@@ -217,6 +218,18 @@ class Quoter:
             raise QuoteError(503, "contract quote TTL is too short to quote safely")
         q = wire.Quote(series_id, taker, side, size, price, self._next_nonce(now), now + ttl_ns)
         return SignedQuote(q, wire.sign(self.key, self.contract_id, q))
+
+    def _check_mark_band(self, snap: Snapshot, s: Series, spot: int, price: int) -> None:
+        """Mirror of `trade`'s anchor: within the last funding mark, plus spot's move since,
+        plus `mark_band_bps` of spot. Usually only fails if volatility moved sharply this hour."""
+        if s.ref_mark is None or s.ref_spot is None:
+            return
+        moved = abs(spot - s.ref_spot) // margin.SPOT_TO_USDC
+        allowance = margin.mul_div_floor(
+            margin.spot_usdc(spot), snap.params.mark_band_bps, margin.BPS
+        )
+        if abs(price - s.ref_mark) > moved + allowance:
+            raise QuoteError(409, "price is too far from the last funding mark")
 
     def _check_vault(
         self, snap: Snapshot, s: Series, side: Side, size: int, price: int, now_ns: int
@@ -252,6 +265,14 @@ class Quoter:
             net[s.id] -= size
         if cash_after < 0:
             raise QuoteError(409, "vault cannot fund this trade")
+        # Hourly outflow cap (lib.rs `trade`): what the vault pays out, net, this funding interval.
+        paid = snap.vault_cash - cash_after
+        if paid > 0:
+            same = snap.epoch == now_ns // snap.params.funding_interval_ns
+            net_out = (snap.epoch_net_outflow if same else 0) + paid
+            start = snap.epoch_start_cash if same else snap.vault_cash
+            if net_out * margin.BPS > start * snap.params.max_epoch_outflow_bps:
+                raise QuoteError(409, "vault outflow limit reached for this hour")
         if abs(net[s.id]) > margin.MAX_POSITION_SIZE:
             raise QuoteError(409, "position too large")
         equity, req_after = margin.risk(cash_after, legs(net, marks), spots, p)

@@ -62,6 +62,10 @@ interface DemoState {
   fundingLog: FundingLogEntry[];
   /** Every fill, newest first (the chain backend reads these from an indexer instead). */
   fills?: Fill[];
+  /** The vault's net payout to traders this funding interval (the contract's outflow cap). */
+  outEpoch?: bigint;
+  epochNetOut?: bigint;
+  epochStartCash?: bigint;
 }
 
 class Panic extends Error {}
@@ -85,6 +89,8 @@ function demoParams(): Params {
     max_time_value_bps: 150n,
     tv_reserve_bps: 100n,
     min_margin_per_contract: 5_000_000n,
+    mark_band_bps: 100n,
+    max_epoch_outflow_bps: 1_000n,
   };
 }
 
@@ -171,7 +177,7 @@ export class DemoWorld {
         const id = `ETH-${k}-${kind === 'Call' ? 'C' : 'P'}`;
         s.series[id] = {
           id, underlying: 'ETH', strike: k * SPOT_SCALE, kind,
-          fundingIndex: 0n, lastMark: 0n, lastEpoch: 0n, netTraderSize: 0n, active: true,
+          fundingIndex: 0n, lastMark: 0n, lastEpoch: 0n, netTraderSize: 0n, active: true, refMark: null, refSpot: null,
         };
       }
     }
@@ -231,6 +237,8 @@ export class DemoWorld {
       ser.fundingIndex += perContract;
       ser.lastMark = row.mark;
       ser.lastEpoch = epoch;
+      ser.refMark = row.mark;
+      ser.refSpot = spot;
       this.s.fundingLog.unshift({
         tsNs: now, series: ser.id, rate: row.fundingRateHourly, mark: row.mark, perContract, index: ser.fundingIndex,
       });
@@ -382,6 +390,12 @@ export class DemoWorld {
     const spot = this.spotOrPanic(ser.underlying);
     const [lo, hi] = priceBand(ser.kind, spot, ser.strike, p);
     require_(price >= lo && price <= hi, 'price is outside the allowed band');
+    if (ser.refMark != null && ser.refSpot != null) {
+      const moved = (spot > ser.refSpot ? spot - ser.refSpot : ser.refSpot - spot) / 100n;
+      const allowance = mulDivFloor(spot / 100n, p.mark_band_bps, BPS);
+      const off = price > ser.refMark ? price - ser.refMark : ser.refMark - price;
+      require_(off <= moved + allowance, 'price is too far from the last funding mark');
+    }
 
     require_(this.s.accounts[taker] != null, 'deposit first');
     const acct = this.account(taker);
@@ -398,9 +412,19 @@ export class DemoWorld {
     const delta = q.side === 'Buy' ? size : -size;
     const cash = tradeCash(q.side, price, size);
     const traderCash = q.side === 'Buy' ? -cash : cash;
+    const epochNow = now / p.funding_interval_ns;
+    if (this.s.outEpoch !== epochNow) {
+      this.s.outEpoch = epochNow;
+      this.s.epochNetOut = 0n;
+      this.s.epochStartCash = this.s.vaultCash;
+    }
     acct.collateral += traderCash;
     this.s.vaultCash -= traderCash;
     require_(this.s.vaultCash >= 0n, 'vault cannot fund this trade');
+    this.s.epochNetOut = (this.s.epochNetOut ?? 0n) + traderCash;
+    if (traderCash > 0n) {
+      require_(this.s.epochNetOut * BPS <= (this.s.epochStartCash ?? 0n) * p.max_epoch_outflow_bps, 'vault outflow limit reached for this hour');
+    }
 
     const i = acct.positions.findIndex(x => x.series === q.series);
     const newSize = (i >= 0 ? acct.positions[i].size : 0n) + delta;
@@ -501,6 +525,8 @@ export class DemoWorld {
     return {
       cash: this.s.vaultCash, totalShares: this.s.totalShares, pendingClaims: this.s.lpPending,
       insurance: this.s.insurance, equity: risk?.[0] ?? null, requirement: risk?.[1] ?? null,
+      epochNetOutflow: this.s.outEpoch === nowNs() / this.s.params.funding_interval_ns ? this.s.epochNetOut ?? 0n : 0n,
+      epochStartCash: this.s.outEpoch === nowNs() / this.s.params.funding_interval_ns ? this.s.epochStartCash ?? this.s.vaultCash : this.s.vaultCash,
     };
   }
 

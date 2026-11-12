@@ -7,7 +7,7 @@ Standard library plus `cryptography`. No web framework and no NEAR SDK, so the i
 ```bash
 cd agent
 uv sync --python 3.11
-uv run pytest                                    # 111 tests
+uv run pytest                                    # 113 tests
 uv run ruff check . && uv run mypy twooptions_agent
 
 cp .env.example .env                             # fill in keys; .env is ignored by git
@@ -43,7 +43,7 @@ Every 64/128-bit integer is a decimal string. Errors are non-200 with `{"error":
 | `GET /inventory` | Vault position and delta per series, net delta and perp hedge target per underlying |
 | `GET /health` | Spot age per underlying, series count, pause flag, keeper status and last errors |
 
-A quote is refused, with the contract's own wording where one exists, when: the taker has never deposited (`deposit first`), the spot on chain is stale, trading is paused, the series is inactive, the size is out of range, the vault could not pay for it (`vault cannot fund this trade`) or it would push the vault past its risk limit (`vault risk limit reached`). The agent also refuses to sell when the fair price is above the contract's band, instead of selling at the band edge below fair value.
+A quote is refused, with the contract's own wording where one exists, when: the taker has never deposited (`deposit first`), the spot on chain is stale, trading is paused, the series is inactive, the size is out of range, the vault could not pay for it (`vault cannot fund this trade`) or it would push the vault past its risk limit (`vault risk limit reached`). The agent also refuses to sell when the fair price is above the contract's band, instead of selling at the band edge below fair value. It also refuses a price further than the contract allows from the series' last funding mark (`price is too far from the last funding mark`), and a quote that would push the vault's payouts this hour past its cap (`vault outflow limit reached for this hour`).
 
 ## Pricing (`pricing.py`)
 
@@ -80,7 +80,7 @@ This file is a port of pre-hackathon code ([`core/black_scholes.py`](https://git
 ## Keeper behaviour worth knowing
 
 - **Spot.** It seeds the feed from the contract's spot on start and after any failed post, so the feed's jump guard compares against what the contract holds. It posts every underlying that has a series. If fewer than two venues agree it holds, the spot on chain goes stale and trading pauses. That is the intended failure mode.
-- **Funding.** It waits 15 s into a new epoch, then settles each series whose `last_epoch` is behind. The mark is the average of the agent's marks sampled over the epoch that just ended (the current mark on a cold start), clamped into the band around the current spot. One series failing does not block the others; it is retried on the next pass.
+- **Funding.** It waits 15 s into a new epoch, then settles each series whose `last_epoch` is behind, two per pass so spot posts are never starved. The mark is the agent's current mark, not an average over the hour: the contract records it with the spot of that moment and anchors the next hour's trade prices to the pair, so the two must belong together. One series failing does not block the others; it is retried on the next pass.
 - **Liquidations.** The contract cannot list its accounts, so the keeper watches every account the agent has quoted for. An account that deposits and never asks this agent for a quote has no positions to liquidate. The keeper account needs a deposit in the contract to receive rewards (`admin fund-keeper`).
 - **One transaction at a time.** All keeper transactions go through one account and wait for execution, about 2 s each. With many underlyings the spot round gets slower; keep `max_spot_age` (30 s) in mind before listing more than a few.
 

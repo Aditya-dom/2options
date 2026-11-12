@@ -98,6 +98,16 @@ pub struct SpotPoint {
     pub seq: u64,
 }
 
+/// The last funding mark of a series and the spot it was set at: the anchor for trade prices.
+#[near(serializers = [borsh])]
+#[derive(Clone, Copy, Debug)]
+pub struct MarkRef {
+    /// USDC micros per contract.
+    pub mark: i128,
+    /// USD scaled by 1e8.
+    pub spot: i128,
+}
+
 #[near(serializers = [borsh])]
 #[derive(Clone, Copy, Debug)]
 pub struct LpClaim {
@@ -141,6 +151,14 @@ pub struct Params {
     pub min_margin_per_contract: u64,
     /// Largest accepted move between consecutive spot posts while the previous one is fresh.
     pub max_spot_jump_bps: u32,
+    /// A trade's price must be within this share of spot (bps), plus however far spot has moved,
+    /// of the series' last funding mark. An option's price moves no more than spot does, so an
+    /// honest quote fits; a skewed one does not.
+    pub mark_band_bps: u32,
+    /// Net cash the vault may pay out to traders within one funding interval, as a share (bps)
+    /// of its cash at the start of that interval. Bounds what a misbehaving agent key can drain
+    /// before the owner pauses the contract and rotates the key.
+    pub max_epoch_outflow_bps: u32,
 }
 
 impl Default for Params {
@@ -166,6 +184,8 @@ impl Default for Params {
             tv_reserve_bps: 100,
             min_margin_per_contract: 5_000_000,
             max_spot_jump_bps: 1_000,
+            mark_band_bps: 100,
+            max_epoch_outflow_bps: 1_000,
         }
     }
 }
@@ -250,6 +270,9 @@ pub struct SeriesView {
     pub last_epoch: U64,
     pub net_trader_size: I128,
     pub active: bool,
+    /// Last funding mark and the spot it was set at; trade prices are anchored to them.
+    pub ref_mark: Option<U128>,
+    pub ref_spot: Option<U128>,
 }
 
 #[near(serializers = [json])]
@@ -262,6 +285,11 @@ pub struct VaultView {
     /// Present when a fresh spot exists for every underlying with open interest.
     pub equity: Option<I128>,
     pub requirement: Option<I128>,
+    /// The current funding interval and the vault's net cash paid to traders within it.
+    pub epoch: U64,
+    pub epoch_net_outflow: I128,
+    /// Vault cash at the start of the interval; the outflow cap is a share of this.
+    pub epoch_start_cash: I128,
 }
 
 #[near(serializers = [json])]

@@ -143,17 +143,19 @@ class Admin:
             res = near.Account(self.rpc_url, account_id, self.owner.key).send(account_id, actions)
         log.info("deployed %s (%d bytes) in %s", account_id, len(code), res.tx_hash)
 
-    def upgrade(self, account_id: str, wasm: Path) -> None:
-        """Replace the code of a deployed contract. State is kept, so the new code must read the
-        old storage layout: fine for a rebuild or a logic change, not for a changed struct."""
+    def upgrade(self, account_id: str, wasm: Path, migrate: bool = False) -> None:
+        """Replace the code of a deployed contract, keeping its state. With `migrate`, the new
+        code's `migrate` method rewrites the state into its layout in the same transaction, so
+        the new code never runs over the old layout (if `migrate` fails, the deploy is undone)."""
         code = wasm.read_bytes()
         if code[:4] != b"\0asm":
             raise SystemExit(f"{wasm} is not a wasm file")
         if not self.has_code(account_id):
             raise SystemExit(f"{account_id} has no contract to upgrade; use deploy")
-        res = near.Account(self.rpc_url, account_id, self.owner.key).send(
-            account_id, [near.DeployContract(code)]
-        )
+        actions: list[near.Action] = [near.DeployContract(code)]
+        if migrate:
+            actions.append(near.FunctionCall("migrate", {}, gas=100 * near.TGAS))
+        res = near.Account(self.rpc_url, account_id, self.owner.key).send(account_id, actions)
         log.info("upgraded %s (%d bytes) in %s", account_id, len(code), res.tx_hash)
 
     def deploy_usdc(self, wasm: Path, near_amount: float) -> None:
@@ -325,6 +327,11 @@ def main(argv: list[str] | None = None) -> int:
         )
         s.add_argument("--usdc-near", type=float, default=3.5)
         s.add_argument("--to", help="mint: receiving account")
+        s.add_argument(
+            "--migrate",
+            action="store_true",
+            help="upgrade: also call migrate() in the same transaction",
+        )
         s.add_argument("--amount", type=float, default=10_000.0, help="mint: USDC")
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(levelname)s %(message)s")
@@ -371,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
             "seed-lp": lambda: admin.seed_lp(a.lp_usdc),
             "fund-keeper": lambda: _fund_keeper(admin, net, a.keeper_usdc),
             "mint": lambda: admin.mint(a.to or owner.account_id, a.amount),
-            "upgrade": lambda: admin.upgrade(net.contract_id, a.wasm),
+            "upgrade": lambda: admin.upgrade(net.contract_id, a.wasm, migrate=a.migrate),
             "upgrade-usdc": lambda: admin.upgrade(usdc_id, a.usdc_wasm),
         }
         if a.cmd == "bootstrap":
