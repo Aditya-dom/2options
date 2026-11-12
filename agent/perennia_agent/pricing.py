@@ -2,7 +2,7 @@
 
 Prior work, disclosed: the Black-Scholes and everlasting-series code is a port of
 `core/black_scholes.py`, `core/everlasting.py` and the skew/smile idea in
-`core/vol_surface.py` from the pre-hackathon Perennia code.
+`core/vol_surface.py` from our pre-hackathon project (gks2022004/nerf@00fe59b).
 
 The model. Every settlement interval `dt`, a long pays the short a fraction `c` of the option's
 time value: `c * (mark - intrinsic)`. Holding one interval then gives
@@ -13,7 +13,7 @@ and unrolling it, the everlasting option is a basket of ordinary options:
 
     V = sum_{n>=1} c * (1 - c)^(n-1) * BS(S, K, sigma, T = n * dt),   r = 0
 
-With c = 1/2 this is Paradigm's half-weight series (the one in `core/everlasting.py`). The
+With c = 1/2 this is Paradigm's half-weight series (the one in the earlier project's `core/everlasting.py`). The
 contract settles hourly, and its funding cap (at most 10% of mark per hour) rules c = 1/2 out,
 so the agent uses c = 1/24: `(mark - intrinsic) / 24` per hour, an average option life of one
 day.

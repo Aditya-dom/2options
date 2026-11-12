@@ -1,5 +1,5 @@
 /**
- * Everlasting option fair value and greeks (Paradigm series, as in core/everlasting.py):
+ * Everlasting option fair value and greeks (Paradigm series, as in our earlier project's core/everlasting.py, gks2022004/nerf@00fe59b):
  *
  *   V = Σ_{n=1}^{50} (1/2)^n · BS(S, K, σ, r = 0, T = n·f),  f = 1 hour
  *

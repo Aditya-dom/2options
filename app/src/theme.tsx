@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
-// Tokens carried over from the Solana frontend (frontend/src/ThemeContext.tsx).
+// Tokens carried over from our earlier Solana frontend (gks2022004/nerf@00fe59b, frontend/src/ThemeContext.tsx).
 const DARK = {
   BG: '#000', SURFACE: '#0a0c10', PANEL: '#12151c',
   BORDER: '#2a2e38', BORDER2: '#363b48', MUTED: '#0e1016',

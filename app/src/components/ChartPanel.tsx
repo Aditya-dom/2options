@@ -2,7 +2,7 @@ import React, { useMemo, useRef } from 'react';
 import { useMountEffect } from '../hooks/useMountEffect';
 import { useTheme } from '../theme';
 
-/* Carried over from the earlier Pacifica frontend (frontend/src/components/ChartPanel.tsx). */
+/* Carried over from the earlier Pacifica frontend (gks2022004/nerf@00fe59b, frontend/src/components/ChartPanel.tsx). */
 
 /* ── Symbol → TradingView ticker map ─────────────────────── */
 const TV_SYMBOLS: Record<string, string> = {

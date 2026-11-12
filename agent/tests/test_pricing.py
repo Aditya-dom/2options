@@ -8,7 +8,7 @@ from perennia_agent.wire import Underlying
 
 
 def test_half_weights_reproduce_the_paradigm_series() -> None:
-    # c = 1/2 hourly is core/everlasting.py's series; HANDOFF_GAURAV.md section 2 quotes these.
+    # c = 1/2 hourly is the earlier project's series (gks2022004/nerf@00fe59b, core/everlasting.py); HANDOFF_GAURAV.md section 2 quotes these.
     hourly = pricing.everlasting(3_500, 3_500, 0.6, True, funding_fraction=0.5, interval_hours=1)
     daily = pricing.everlasting(3_500, 3_500, 0.6, True, funding_fraction=0.5, interval_hours=24)
     assert hourly.price == pytest.approx(12.06, abs=0.01)

@@ -59,7 +59,7 @@ Not decided, and I did not add `deposit:<account_id>` to `ft_on_transfer`. Optio
 - **The deployable wasm.** Rust 1.91 emits bulk-memory instructions; build with `cargo-near` (`contracts/README.md`, "Deploying"). Untested on a node.
 - **#18** sandbox integration tests and gas numbers: not done.
 - **#34** Shade Agent, **#36** auto-roll key, **#38** Hyperliquid hedge, **#14** NEP-245: not started. `/attestation` returns the key and passes through `code_hash` and `tee_quote_url` from the environment when they exist.
-- **#41** README: the root `README.md` is now the NEAR one (the old one is `PRIOR_WORK_README.md`).
+- **#41** README: the root `README.md` is now the NEAR one.
 - §6 eligibility (organizers' answer, the fresh repo): still to answer.
 
 ---

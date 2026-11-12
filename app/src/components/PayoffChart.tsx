@@ -9,7 +9,7 @@ export interface PayoffPoint {
   later?: number;
 }
 
-/** Adapted from frontend/src/components/PayoffDiagram.tsx. */
+/** Adapted from our earlier frontend (gks2022004/nerf@00fe59b, frontend/src/components/PayoffDiagram.tsx). */
 export default function PayoffChart({ data, spot, height = 150, laterLabel }: {
   data: PayoffPoint[]; spot: number; height?: number; laterLabel?: string;
 }) {

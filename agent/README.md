@@ -51,13 +51,13 @@ Every settlement a long pays the short a fraction `c` of the option's time value
 
     V = sum_{n>=1} c (1-c)^(n-1) BS(S, K, sigma, T = n * interval)
 
-With `c = 1/2` this is Paradigm's half-weight series, which is what `core/everlasting.py` computes. The agent uses `c = 1/24` with the contract's hourly settlement: a long pays `(mark - intrinsic) / 24` per hour and the option has an average life of one day. An at-the-money ETH call at 60% vol is about 1.1% of spot.
+With `c = 1/2` this is Paradigm's half-weight series, which is what the earlier project's `core/everlasting.py` computes. The agent uses `c = 1/24` with the contract's hourly settlement: a long pays `(mark - intrinsic) / 24` per hour and the option has an average life of one day. An at-the-money ETH call at 60% vol is about 1.1% of spot.
 
 Price and funding share the one parameter on purpose. HANDOFF_GAURAV.md section 2 found that pricing with half weights at an hourly period while charging `/24` leaves the vault paying out about seven times more gamma than it collects in funding. Switching the price to half weights at a daily period (option B there) overshoots the other way: the quote is about 50% above what the funding stream is worth. `tests/test_pricing.py` checks the one-interval identity `V(t) = (1-c) E[V(t+dt)] + c E[intrinsic(t+dt)]` numerically and pins both mismatches.
 
 The vol surface is a configured ATM vol per underlying with a linear skew and quadratic smile in log-moneyness, floored by the realized vol of the spot the keeper posts (30-minute half-life). Quoting below realized vol loses to anyone who delta-hedges.
 
-This file is a port of pre-hackathon code (`core/black_scholes.py`, `core/everlasting.py`, the skew and smile in `core/vol_surface.py`) and is disclosed as prior work.
+This file is a port of pre-hackathon code ([`core/black_scholes.py`](https://github.com/gks2022004/nerf/blob/00fe59b/core/black_scholes.py), [`core/everlasting.py`](https://github.com/gks2022004/nerf/blob/00fe59b/core/everlasting.py), the skew and smile in [`core/vol_surface.py`](https://github.com/gks2022004/nerf/blob/00fe59b/core/vol_surface.py)) and is disclosed as prior work.
 
 ## Modules
 

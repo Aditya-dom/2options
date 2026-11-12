@@ -1,4 +1,4 @@
-/* Carried over from the earlier Pacifica frontend (frontend/src/LandingPage.tsx); copy updated for NEAR. */
+/* Carried over from the earlier Pacifica frontend (gks2022004/nerf@00fe59b, frontend/src/LandingPage.tsx); copy updated for NEAR. */
 import { useRef, useState } from 'react';
 import { useMountEffect } from './hooks/useMountEffect';
 import { ArrowRight, Sun, Moon } from 'lucide-react';
