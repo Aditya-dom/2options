@@ -5,6 +5,7 @@ import { fmtSignedUsdc, fmtUsdc } from '../lib/units';
 import { useProtocol } from '../hooks/useProtocol';
 import { useWallet } from '../hooks/useWallet';
 import { useTheme } from '../theme';
+import FaucetButton from './FaucetButton';
 import type { FundsMode } from './FundsDialog';
 import { Badge, Button, Panel, Row, Stat } from './ui';
 
@@ -67,6 +68,7 @@ export default function AccountPanel({ onFunds, onBridge, bare }: { onFunds: (m:
       <Button variant="ghost" onClick={onBridge} style={{ width: '100%', marginTop: 6 }}>
         DEPOSIT FROM ANOTHER CHAIN
       </Button>
+      <FaucetButton style={{ width: '100%', marginTop: 6 }} />
     </Panel>
   );
 }

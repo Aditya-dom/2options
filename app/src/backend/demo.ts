@@ -66,7 +66,13 @@ interface DemoState {
   outEpoch?: bigint;
   epochNetOut?: bigint;
   epochStartCash?: bigint;
+  /** Last faucet claim per account (ms), as the test token keeps it. */
+  faucetClaims?: Record<string, number>;
 }
+
+/** The test token's faucet terms (contracts/test-usdc): 2,000 USDC per account per 24 hours. */
+export const FAUCET_AMOUNT = 2_000n * USDC_UNIT;
+export const FAUCET_COOLDOWN_MS = 24 * 3_600_000;
 
 class Panic extends Error {}
 const require_ = (cond: boolean, msg: string): void => { if (!cond) throw new Panic(msg); };
@@ -506,7 +512,23 @@ export class DemoWorld {
       case 'lp_request_redeem': this.lpRequestRedeem(id, call.shares); return ['LpRedeemRequest'];
       case 'lp_claim': this.claimLp(id); return ['LpClaim'];
       case 'register_usdc': return [];
+      case 'faucet': this.faucet(id); return ['ft_mint'];
     }
+  }
+
+  private faucet(id: string) {
+    const next = this.faucetNextClaim(id);
+    if (next != null) {
+      const mins = Math.ceil((next - Date.now()) / 60_000);
+      throw new Panic(`faucet already claimed; try again in ${Math.floor(mins / 60)}h ${mins % 60}m`);
+    }
+    (this.s.faucetClaims ??= {})[id] = Date.now();
+    this.s.wallets[id] = (this.s.wallets[id] ?? 0n) + FAUCET_AMOUNT;
+  }
+
+  faucetNextClaim(id: string): number | null {
+    const last = this.s.faucetClaims?.[id];
+    return last != null && Date.now() < last + FAUCET_COOLDOWN_MS ? last + FAUCET_COOLDOWN_MS : null;
   }
 
   // ------------------------------------------------------------------------------------------
@@ -583,6 +605,7 @@ export class DemoBackend implements Backend {
   async getLpClaim(id: string) { return this.world.lpClaim(id); }
   async usdcBalance(id: string) { return this.world.wallet(id); }
   async usdcRegistered() { return true; }
+  async faucetStatus(id: string) { return { amount: FAUCET_AMOUNT, nextClaimMs: this.world.faucetNextClaim(id) }; }
   async isAgentKey() { return null; }
   async tradeHistory(id: string) { return this.world.fillsOf(id); }
 

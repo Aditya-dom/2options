@@ -27,6 +27,8 @@ const FRIENDLY: Array<[RegExp, string]> = [
   [/withdrawals are halted/, 'Withdrawals are halted while the system is under-collateralized.'],
   [/claim is still in cooldown/, 'Your LP claim is still in its cooldown.'],
   [/redeeming would leave the vault under-margined|vault has insufficient free cash/, 'The vault needs that capital to back open positions. Try a smaller redemption later.'],
+  [/faucet already claimed; try again in (\d+h \d+m)/, 'You already claimed test USDC today. The faucet opens again in $1.'],
+  [/only the owner can mint/, 'Use the faucet to get test USDC.'],
   [/User (rejected|cancelled)|rejected by user|User closed/i, 'Transaction cancelled in the wallet.'],
 ];
 
@@ -39,6 +41,9 @@ export function contractMessage(err: unknown): string {
 
 export function friendlyError(err: unknown): string {
   const msg = contractMessage(err);
-  for (const [re, text] of FRIENDLY) if (re.test(msg)) return text;
+  for (const [re, text] of FRIENDLY) {
+    const m = re.exec(msg);
+    if (m) return text.replace('$1', m[1] ?? '');
+  }
   return msg.length > 200 ? msg.slice(0, 200) + '…' : msg;
 }

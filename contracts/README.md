@@ -48,7 +48,7 @@ Both were added by an upgrade (`admin upgrade --migrate`): the new code and a ca
 
 ## Test USDC (`test-usdc/`)
 
-A NEP-141 token with 6 decimals and an open faucet (`mint(account_id, amount)`, up to 1,000,000 USDC per call) built on `near-contract-standards`. Testnet only: anyone can mint, so it is worthless by design. It exists so deposits, withdrawals and LP flows can run end to end without someone else's faucet. `admin` refuses to use it outside testnet.
+A NEP-141 token with 6 decimals built on `near-contract-standards`. `faucet()` pays the caller 2,000 USDC, at most once per 24 hours per account (the contract enforces it, and pays the caller's storage registration); `faucet_status(account_id)` says when the next claim opens. `mint(account_id, amount)` is owner only, up to 1,000,000 USDC per call, for bootstrap and LP seeding. Testnet only and worthless by design. It exists so deposits, withdrawals and LP flows can run end to end without someone else's faucet. `admin` refuses to use it outside testnet.
 
 ## Module map
 

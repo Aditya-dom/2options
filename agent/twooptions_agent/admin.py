@@ -143,7 +143,13 @@ class Admin:
             res = near.Account(self.rpc_url, account_id, self.owner.key).send(account_id, actions)
         log.info("deployed %s (%d bytes) in %s", account_id, len(code), res.tx_hash)
 
-    def upgrade(self, account_id: str, wasm: Path, migrate: bool = False) -> None:
+    def upgrade(
+        self,
+        account_id: str,
+        wasm: Path,
+        migrate: bool = False,
+        migrate_args: dict[str, Any] | None = None,
+    ) -> None:
         """Replace the code of a deployed contract, keeping its state. With `migrate`, the new
         code's `migrate` method rewrites the state into its layout in the same transaction, so
         the new code never runs over the old layout (if `migrate` fails, the deploy is undone)."""
@@ -154,12 +160,13 @@ class Admin:
             raise SystemExit(f"{account_id} has no contract to upgrade; use deploy")
         actions: list[near.Action] = [near.DeployContract(code)]
         if migrate:
-            actions.append(near.FunctionCall("migrate", {}, gas=100 * near.TGAS))
+            actions.append(near.FunctionCall("migrate", migrate_args or {}, gas=100 * near.TGAS))
         res = near.Account(self.rpc_url, account_id, self.owner.key).send(account_id, actions)
         log.info("upgraded %s (%d bytes) in %s", account_id, len(code), res.tx_hash)
 
     def deploy_usdc(self, wasm: Path, near_amount: float) -> None:
-        self._deploy(self.usdc_id, wasm, near_amount, near.FunctionCall("new", {}))
+        init = near.FunctionCall("new", {"owner_id": self.owner.account_id})
+        self._deploy(self.usdc_id, wasm, near_amount, init)
 
     def deploy(self, wasm: Path, near_amount: float, agent_key: str) -> None:
         init = near.FunctionCall(
@@ -330,7 +337,7 @@ def main(argv: list[str] | None = None) -> int:
         s.add_argument(
             "--migrate",
             action="store_true",
-            help="upgrade: also call migrate() in the same transaction",
+            help="upgrade, upgrade-usdc: also call migrate() in the same transaction",
         )
         s.add_argument("--amount", type=float, default=10_000.0, help="mint: USDC")
     a = p.parse_args(argv)
@@ -356,8 +363,8 @@ def main(argv: list[str] | None = None) -> int:
     is_test_token = usdc_id.endswith("." + owner.account_id)
     if a.cmd in FAUCET_COMMANDS and not (net.network == "testnet" and is_test_token):
         log.error(
-            "%s uses the test token's open faucet: testnet only, with TWOOPTIONS_USDC_ID under the "
-            "owner account",
+            "%s mints the test token: testnet only, with TWOOPTIONS_USDC_ID under the owner "
+            "account",
             a.cmd,
         )
         return 2
@@ -379,7 +386,9 @@ def main(argv: list[str] | None = None) -> int:
             "fund-keeper": lambda: _fund_keeper(admin, net, a.keeper_usdc),
             "mint": lambda: admin.mint(a.to or owner.account_id, a.amount),
             "upgrade": lambda: admin.upgrade(net.contract_id, a.wasm, migrate=a.migrate),
-            "upgrade-usdc": lambda: admin.upgrade(usdc_id, a.usdc_wasm),
+            "upgrade-usdc": lambda: admin.upgrade(
+                usdc_id, a.usdc_wasm, migrate=a.migrate, migrate_args={"owner_id": owner.account_id}
+            ),
         }
         if a.cmd == "bootstrap":
             order = ["deploy", "set-agent-keys", "set-params", "register", "add-series"]

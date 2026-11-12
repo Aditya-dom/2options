@@ -25,7 +25,7 @@ From the repo root the same things are `make near-bootstrap`, `make near-agent` 
 3. Fill in `agent/.env`: `OWNER_*`, `AGENT_PRIVATE_KEY`, `KEEPER_*`, and pick `TWOOPTIONS_CONTRACT_ID=contract.<owner>` and `TWOOPTIONS_USDC_ID=usdc.<owner>`.
 4. `make near-wasm`, then `make near-bootstrap`. It deploys the test USDC and 2Options, applies the parameter preset, registers the contract with the token, lists a strike grid around the live spot, seeds LP liquidity and gives the keeper a contract balance. Rerunning it skips what is already done.
 5. `make near-agent`. `GET /health` shows the spot age and the keeper's last actions.
-6. Point the app at it: `VITE_CONTRACT_ID`, `VITE_USDC_ID`, `VITE_AGENT_URL=http://localhost:8787`. Anyone can get test USDC with `admin mint --to <account> --amount 10000`.
+6. Point the app at it: `VITE_CONTRACT_ID`, `VITE_USDC_ID`, `VITE_AGENT_URL=http://localhost:8787`. Traders get test USDC from the app's faucet button (the token's `faucet()`: 2,000 per account per 24 hours); the owner can still `admin mint --to <account> --amount 10000`.
 
 This ran end to end on testnet on Nov 12. See "Not verified" below for what is still open.
 

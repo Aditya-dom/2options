@@ -6,7 +6,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import type { Call, ChainRow } from '../backend/types';
+import type { Call, ChainRow, FaucetStatus } from '../backend/types';
 import type { AccountState, LpClaim, Params, Series, SpotPoint, Underlying, Vault } from '../lib/contract';
 import { isDemo, txUrl } from '../lib/config';
 import { friendlyError } from '../lib/errors';
@@ -39,6 +39,8 @@ export interface ProtocolData {
   lpClaim: LpClaim | null;
   usdc: bigint | null;
   usdcRegistered: boolean | null;
+  /** The test token's faucet for the connected account; null on real USDC or when signed out. */
+  faucet: FaucetStatus | null;
   fundingEvents: FundingEvent[];
   loaded: boolean;
   error: string | null;
@@ -52,7 +54,7 @@ interface ProtocolCtx extends ProtocolData {
 
 const EMPTY: ProtocolData = {
   params: null, series: [], spots: {}, vault: null, paused: false, chain: new Map(), agentError: null,
-  account: null, lpShares: 0n, lpClaim: null, usdc: null, usdcRegistered: null, fundingEvents: [],
+  account: null, lpShares: 0n, lpClaim: null, usdc: null, usdcRegistered: null, faucet: null, fundingEvents: [],
   loaded: false, error: null,
 };
 
@@ -102,6 +104,7 @@ export function ProtocolProvider({ children }: { children: ReactNode }) {
         ? await Promise.all([
             backend.getAccount(accountId), backend.getLpShares(accountId), backend.getLpClaim(accountId),
             backend.usdcBalance(accountId).catch(() => null), backend.usdcRegistered(accountId).catch(() => null),
+            backend.faucetStatus?.(accountId).catch(() => null) ?? Promise.resolve(null),
           ])
         : null;
 
@@ -132,6 +135,7 @@ export function ProtocolProvider({ children }: { children: ReactNode }) {
         lpClaim: acct?.[2] ?? null,
         usdc: acct?.[3] ?? null,
         usdcRegistered: acct?.[4] ?? null,
+        faucet: acct?.[5] ?? null,
         fundingEvents: fresh.length || history.length
           ? mergeFundingEvents([...fresh, ...d.fundingEvents, ...history]).slice(0, MAX_FUNDING_EVENTS)
           : d.fundingEvents,

@@ -11,7 +11,7 @@ Built at NEAR HACKATHON, Nov 1 to 14, 2026. Tracks: **Unstoppable DeFi**, AI Sec
 | Testnet | |
 |---|---|
 | Contract | `contract.twooptions.testnet` |
-| Test USDC (open faucet, worthless) | `usdc.twooptions.testnet` |
+| Test USDC (faucet: 2,000 per account per day; worthless) | `usdc.twooptions.testnet` |
 
 ## Prior work, disclosed
 
@@ -57,7 +57,7 @@ flowchart LR
 | Contract | `contracts/twooptions` (Rust, near-sdk) | Holds USDC. Trader collateral, LP vault with shares, trades against signed quotes, margin for traders and for the vault, hourly funding, liquidation, pause |
 | Agent | `agent/` (Python) | Prices the chain, signs quotes, posts spot, settles funding, scans for liquidations, serves the HTTP API |
 | App | `app/` (React, Vite) | Wallet login, deposit and withdraw, option chain, trade ticket, strategies, positions, funding, LP vault, cross-chain deposit through NEAR Intents |
-| Test USDC | `contracts/test-usdc` | Mintable 6-decimal token for testnet |
+| Test USDC | `contracts/test-usdc` | 6-decimal token for testnet: rate-limited faucet (2,000 per account per day), owner-only mint |
 
 ### A trade
 
@@ -131,7 +131,7 @@ Then set `VITE_CONTRACT_ID`, `VITE_USDC_ID` and `VITE_AGENT_URL` in `app/.env`.
 | Piece | State |
 |---|---|
 | Contract | Deployed on testnet. 77 unit tests, clippy clean. No sandbox tests, no gas numbers. Unaudited |
-| Test USDC | Deployed on testnet. 5 unit tests |
+| Test USDC | Deployed on testnet. 9 unit tests (faucet limit, owner-only mint, migration) |
 | Agent: pricing, quotes, keeper, API | Running against testnet: posts spot every 5 s, settles funding hourly, signs quotes. 113 unit tests |
 | End to end | `agent/scripts/e2e_testnet.py`: 27 checks with real transactions (deposit, trades, rejected replays and forgeries, two-leg batch, withdraw, LP deposit and redeem, close-out, solvency) |
 | Wire format | Byte-for-byte parity between the contract, the agent and the app, signatures included |

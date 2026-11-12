@@ -4,6 +4,7 @@ import { fmtUsdc, formatUnits, parseUnits, USDC_DECIMALS } from '../lib/units';
 import { useProtocol } from '../hooks/useProtocol';
 import { backend } from '../services';
 import { useTheme } from '../theme';
+import FaucetButton from './FaucetButton';
 import { AmountInput, Button, Dialog, Note, Row } from './ui';
 
 export type FundsMode = 'deposit' | 'withdraw' | 'lp_deposit';
@@ -58,6 +59,7 @@ export default function FundsDialog({ mode, onClose }: { mode: FundsMode; onClos
               With open positions you can withdraw down to the 1.5× initial margin ratio.
             </div>
           )}
+          {mode !== 'withdraw' && available < min && <FaucetButton style={{ width: '100%' }} />}
           <AmountInput ariaLabel="Amount in USDC" value={amount} onChange={setAmount} suffix="USDC"
             onMax={() => setAmount(formatUnits(available, USDC_DECIMALS))} />
           {error && <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.RED }}>{error}</div>}

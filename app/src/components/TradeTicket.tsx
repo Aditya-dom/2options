@@ -15,6 +15,7 @@ import { agent, backend } from '../services';
 import { useTheme } from '../theme';
 import { fundingPerHour, type Pick } from './OptionChain';
 import type { FundsMode } from './FundsDialog';
+import FaucetButton from './FaucetButton';
 import PayoffChart from './PayoffChart';
 import { AmountInput, Button, Empty, Note, Panel, Row } from './ui';
 
@@ -152,6 +153,7 @@ export default function TradeTicket({ pick, onPick, size, onSize, onFunds }: {
           <Button variant="ghost" onClick={() => onFunds('withdraw')} disabled={!account} style={{ padding: '5px 12px', fontSize: 10 }}>WITHDRAW</Button>
         </div>
       )}
+      {accountId && <FaucetStrip />}
       </div>
       <div style={{ padding: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
@@ -246,5 +248,17 @@ export default function TradeTicket({ pick, onPick, size, onSize, onFunds }: {
         ) : <Empty>—</Empty>}
       </div>
     </Panel>
+  );
+}
+
+/** Shown only while the account can claim, so it disappears for a day after use. */
+function FaucetStrip() {
+  const { t } = useTheme();
+  const { faucet } = useProtocol();
+  if (!faucet || (faucet.nextClaimMs != null && faucet.nextClaimMs > Date.now())) return null;
+  return (
+    <div style={{ padding: '6px 12px', borderBottom: `1px solid ${t.BORDER}` }}>
+      <FaucetButton onlyWhenOpen style={{ width: '100%', padding: '6px 12px', fontSize: 10 }} />
+    </div>
   );
 }

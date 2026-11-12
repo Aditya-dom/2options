@@ -132,17 +132,31 @@ def main() -> int:
     check(
         quote(call, "Buy", ONE).get("error") == "deposit first", "no quote before the first deposit"
     )
+    # The faucet pays 2,000 once per 24h per account; this account's earlier claims may still be
+    # cooling down, so claim only when it is open and check the refusal either way.
+    if view(token, "faucet_status", {"account_id": me})["next_claim_ns"] is None:
+        before = wallet()
+        acct.call(token, "faucet", {})
+        check(wallet() == before + 2_000 * USDC, "faucet pays 2,000 test USDC", wallet() / USDC)
+    before = wallet()
+    err = fails(lambda: acct.call(token, "faucet", {}))
+    check(
+        "already claimed" in err and wallet() == before,
+        "a second faucet claim within 24 hours is refused",
+        err[-45:],
+    )
+    err = fails(lambda: acct.call(token, "mint", {"account_id": me, "amount": str(USDC)}))
+    check("only the owner can mint" in err, "mint is owner only", err[-45:])
     w0 = wallet()
-    acct.call(token, "mint", {"account_id": me, "amount": str(10_000 * USDC)})
-    check(wallet() == w0 + 10_000 * USDC, "faucet mints test USDC", wallet() / USDC)
+    check(w0 >= 6_000 * USDC, "wallet holds the 6,000 test USDC this run moves", w0 / USDC)
     transfer_call(5_000, "deposit")
     check(
-        int(account()["collateral"]) == 5_000 * USDC and wallet() == w0 + 5_000 * USDC,
+        int(account()["collateral"]) == 5_000 * USDC and wallet() == w0 - 5_000 * USDC,
         "deposit credits collateral 1:1",
     )
     fails(lambda: transfer_call(1, "nonsense"))
     check(
-        wallet() == w0 + 5_000 * USDC,
+        wallet() == w0 - 5_000 * USDC,
         "a deposit with an unknown message is refunded by the token",
         wallet() / USDC,
     )

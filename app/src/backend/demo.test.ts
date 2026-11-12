@@ -36,3 +36,14 @@ test('a spread fills as one batch where its naked short leg alone is refused', a
     ['ETH-3500-C', -SIZE_SCALE],
   ]);
 });
+
+test('faucet pays 2,000 USDC once per day, like the test token', () => {
+  const w = world();
+  const before = w.wallet('newcomer.testnet');
+  expect(w.faucetNextClaim('newcomer.testnet')).toBeNull();
+  w.apply('newcomer.testnet', { kind: 'faucet' });
+  expect(w.wallet('newcomer.testnet') - before).toBe(2_000n * USDC_UNIT);
+  expect(w.faucetNextClaim('newcomer.testnet')).toBeGreaterThan(Date.now() + 23 * 3_600_000);
+  expect(() => w.apply('newcomer.testnet', { kind: 'faucet' })).toThrow(/faucet already claimed; try again in 2[34]h \d+m/);
+  expect(w.wallet('newcomer.testnet') - before).toBe(2_000n * USDC_UNIT);
+});

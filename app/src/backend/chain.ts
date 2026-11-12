@@ -13,7 +13,7 @@ import { viewCall } from './rpc';
 import { TradingKey } from './tradingKey';
 import { config } from '../lib/config';
 import { fetchFills, type Fill } from '../lib/history';
-import type { Backend, Call, CallResult } from './types';
+import type { Backend, Call, CallResult, FaucetStatus } from './types';
 
 const TGAS = 1_000_000_000_000n;
 /** ft_transfer_call forwards to ft_on_transfer; the handoff says start at 100 TGas. */
@@ -86,6 +86,20 @@ export class ChainBackend implements Backend {
 
   isAgentKey(key: string) { return this.view<boolean>('is_agent_key', { key }); }
 
+  /** The test token's `faucet_status`; null when the token has no such view (real USDC). */
+  async faucetStatus(accountId: string): Promise<FaucetStatus | null> {
+    if (this.noFaucet) return null;
+    try {
+      const r = await this.view<{ amount: string; next_claim_ns: string | null }>('faucet_status', { account_id: accountId }, this.usdcId);
+      return { amount: big(r.amount), nextClaimMs: r.next_claim_ns == null ? null : Number(BigInt(r.next_claim_ns) / 1_000_000n) };
+    } catch (e) {
+      if (/MethodNotFound|MethodResolveError/i.test(String(e))) this.noFaucet = true;
+      return null;
+    }
+  }
+
+  private noFaucet = false;
+
   async submit(accountId: string, call: Call): Promise<CallResult> {
     const { receiverId, actions } = await this.toTx(accountId, call);
     // Single zero-deposit calls to the contract are signed by the app's trading key: no popup.
@@ -134,6 +148,8 @@ export class ChainBackend implements Backend {
         return { receiverId: this.contractId, action: fc('lp_request_redeem', { shares: call.shares.toString() }, GAS_SIMPLE, 0n) };
       case 'lp_claim':
         return { receiverId: this.contractId, action: fc('lp_claim', {}, GAS_PAYOUT, 0n) };
+      case 'faucet':
+        return { receiverId: this.usdcId, action: fc('faucet', {}, GAS_SIMPLE, 0n) };
       case 'register_usdc': {
         const bounds = await this.view<{ min: string }>('storage_balance_bounds', {}, this.usdcId);
         return {

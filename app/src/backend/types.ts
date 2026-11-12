@@ -13,13 +13,22 @@ export type Call =
   | { kind: 'trade_batch'; legs: { quote: QuoteJson; signature: string }[] }
   | { kind: 'lp_request_redeem'; shares: bigint }
   | { kind: 'lp_claim' }
-  | { kind: 'register_usdc' };
+  | { kind: 'register_usdc' }
+  /** The test token's rate-limited faucet (testnet). */
+  | { kind: 'faucet' };
 
 export interface CallResult {
   /** Final transaction hash when the wallet returned one (redirect wallets do not). */
   txHash: string | null;
   /** Contract events seen in the receipts, e.g. `WithdrawRefunded`. */
   events: string[];
+}
+
+/** The test token's faucet: what one claim pays and when the account may claim next. */
+export interface FaucetStatus {
+  amount: bigint;
+  /** When the next claim opens (ms since epoch); null when a claim would succeed now. */
+  nextClaimMs: number | null;
 }
 
 export interface Backend {
@@ -46,6 +55,8 @@ export interface Backend {
   tradeHistory(accountId: string): Promise<Fill[]>;
 
   submit(accountId: string, call: Call): Promise<CallResult>;
+  /** Null when the collateral token has no faucet (real USDC). */
+  faucetStatus?(accountId: string): Promise<FaucetStatus | null>;
   /** Set up whatever lets trades sign without a wallet popup (chain mode). */
   prepareTrading?(accountId: string): Promise<void>;
 }
