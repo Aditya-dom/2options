@@ -14,6 +14,8 @@
     seed-lp          mint test USDC to the owner and deposit it as LP liquidity
     fund-keeper      give the keeper account a contract balance so it can receive liquidation rewards
 
+`upgrade` and `upgrade-usdc` replace the code of an existing deployment and keep its state.
+
 It reads OWNER_ACCOUNT_ID / OWNER_PRIVATE_KEY from the environment (or `.env`). The owner key
 is only needed here, never by the running agent.
 """
@@ -140,6 +142,19 @@ class Admin:
             # The account exists without code: it must sign its own deploy with the owner's key.
             res = near.Account(self.rpc_url, account_id, self.owner.key).send(account_id, actions)
         log.info("deployed %s (%d bytes) in %s", account_id, len(code), res.tx_hash)
+
+    def upgrade(self, account_id: str, wasm: Path) -> None:
+        """Replace the code of a deployed contract. State is kept, so the new code must read the
+        old storage layout: fine for a rebuild or a logic change, not for a changed struct."""
+        code = wasm.read_bytes()
+        if code[:4] != b"\0asm":
+            raise SystemExit(f"{wasm} is not a wasm file")
+        if not self.has_code(account_id):
+            raise SystemExit(f"{account_id} has no contract to upgrade; use deploy")
+        res = near.Account(self.rpc_url, account_id, self.owner.key).send(
+            account_id, [near.DeployContract(code)]
+        )
+        log.info("upgraded %s (%d bytes) in %s", account_id, len(code), res.tx_hash)
 
     def deploy_usdc(self, wasm: Path, near_amount: float) -> None:
         self._deploy(self.usdc_id, wasm, near_amount, near.FunctionCall("new", {}))
@@ -294,7 +309,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("keygen", help="print a new ed25519 key pair")
     sub.add_parser("status", help="print the contract's state")
     for name in ("bootstrap", "deploy-usdc", "deploy", "set-params", "register", "add-series",
-                 "seed-lp", "fund-keeper", "set-agent-keys", "mint"):  # fmt: skip
+                 "seed-lp", "fund-keeper", "set-agent-keys", "mint", "upgrade", "upgrade-usdc"):  # fmt: skip
         s = sub.add_parser(name)
         s.add_argument("--wasm", type=Path, default=_repo_wasm("perennia"))
         s.add_argument("--usdc-wasm", type=Path, default=_repo_wasm("test_usdc"))
@@ -356,6 +371,8 @@ def main(argv: list[str] | None = None) -> int:
             "seed-lp": lambda: admin.seed_lp(a.lp_usdc),
             "fund-keeper": lambda: _fund_keeper(admin, net, a.keeper_usdc),
             "mint": lambda: admin.mint(a.to or owner.account_id, a.amount),
+            "upgrade": lambda: admin.upgrade(net.contract_id, a.wasm),
+            "upgrade-usdc": lambda: admin.upgrade(usdc_id, a.usdc_wasm),
         }
         if a.cmd == "bootstrap":
             order = ["deploy", "set-agent-keys", "set-params", "register", "add-series"]

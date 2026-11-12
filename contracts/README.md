@@ -16,13 +16,15 @@ Notes:
 - near-sdk only compiles for wasm or under test, so a plain `cargo check` fails by design. Use the wasm target.
 - `near-sdk` is pinned to `>=5.10, <5.30` because 5.30 needs Rust 1.95 and this machine has 1.91. Cargo resolved 5.27.
 - If linking fails with `libSystem.tbd: unknown architecture`, the default macOS SDK is broken. Use `export SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk` for that shell.
-- Not yet covered: gas measurement and sandbox integration tests (`near-workspaces`). Unit tests cannot measure gas.
+- Not yet covered: gas measurement and sandbox integration tests (`near-workspaces`). Unit tests cannot measure gas. `agent/scripts/e2e_testnet.py` exercises the deployed contract with real transactions instead.
 
 ## Deploying
 
 `make near-wasm` builds both contracts, and `make near-bootstrap` deploys and configures them on testnet (`agent/perennia_agent/admin.py`; steps in `agent/README.md`).
 
-**Build the deployable wasm with `cargo-near`** (`cargo install cargo-near`). Rust 1.91 emits bulk-memory instructions by default: the plain `cargo build` artifact contains about 250 `memory.copy` instructions. `cargo-near` post-processes the wasm for the NEAR runtime; whether a node accepts the plain build has not been tested. `make near-wasm` uses `cargo-near` when it is installed and falls back to the plain build with a warning. Neither artifact has been deployed yet.
+**The wasm must be built with `--cfg near`.** `contracts/.cargo/config.toml` sets it for the wasm target, so a plain `cargo build` is correct; `cargo-near` sets it itself. Without the flag the contract still deploys and runs, but near-sdk does not route panics to the host, and every rejection reaches the caller as `WebAssembly trap: unreachable` instead of its message. This was found on testnet on Nov 12 and fixed by rebuilding and upgrading in place (`admin upgrade`, which keeps state).
+
+Both contracts are deployed on testnet and `agent/scripts/e2e_testnet.py` passes against them (27 checks: deposit, trade, rejections with readable messages, two-leg batch, withdraw, LP deposit and redeem, close-out, solvency).
 
 Bootstrap applies these parameters on top of `Params::default()`, because the agent charges `(mark - intrinsic) / 24` per hour and prices to match (`agent/README.md`, "Pricing"):
 

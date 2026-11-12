@@ -1,0 +1,6 @@
+# near-sdk routes panics, logging and hashing to the NEAR host only when `--cfg near` is set.
+# Without it a wasm build still runs, but every `require!` failure reaches the caller as
+# "WebAssembly trap: unreachable" instead of its message (found on testnet, Nov 12).
+# cargo-near sets this flag itself; this makes a plain `cargo build` produce the same thing.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "near"]

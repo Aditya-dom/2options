@@ -13,7 +13,8 @@ import { friendlyError } from '../lib/errors';
 import { agent, backend, world } from '../services';
 import { useWallet } from './useWallet';
 
-const POLL_MS = isDemo ? 1_000 : 3_000;
+// Chain mode makes about ten RPC calls per poll; free endpoints throttle anything much faster.
+const POLL_MS = isDemo ? 1_000 : 5_000;
 const MAX_FUNDING_EVENTS = 200;
 
 export interface FundingEvent {

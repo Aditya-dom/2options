@@ -198,3 +198,16 @@ def test_keeper_without_a_contract_account_reports_why_it_cannot_liquidate(
 @pytest.fixture
 def rig() -> Rig:
     return Rig()
+
+
+def test_a_funding_backlog_is_settled_a_few_at_a_time_so_spot_is_never_starved(rig: Rig) -> None:
+    rig.chain.add_series("ETH-2000-C", "ETH-2000-P", "ETH-2200-C")  # five series in all
+    rig.chain.now_ns = T0 + HOUR + 30 * SEC
+    rig.chain.set_spot("ETH", 2_110)
+    per_pass = []
+    for _ in range(4):
+        before = len(rig.chain.calls)
+        rig.keeper.tick_funding(rig.chain.now_ns)
+        per_pass.append(len(rig.chain.calls) - before)
+    assert per_pass == [2, 2, 1, 0]
+    assert {s["last_epoch"] for s in rig.chain.series.values()} == {str(rig.chain.now_ns // HOUR)}

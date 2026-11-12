@@ -35,7 +35,7 @@ export class ChainBackend implements Backend {
   constructor(
     readonly contractId: string,
     readonly usdcId: string,
-    private readonly rpcUrl: string,
+    private readonly rpcUrl: string | readonly string[],
     private readonly wallet: () => Promise<Wallet>,
   ) {}
 

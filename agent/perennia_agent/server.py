@@ -250,7 +250,7 @@ def _warm(cache: ChainCache, stop: threading.Event) -> None:
             cache.refresh()
         except Exception as e:
             log.warning("snapshot refresh failed: %s", e)
-        stop.wait(1.5)
+        stop.wait(3.0)
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -49,7 +49,10 @@ class Sender(Protocol):
 @dataclass(frozen=True)
 class KeeperConfig:
     spot_interval_s: float = 5.0
-    funding_check_s: float = 20.0
+    funding_check_s: float = 3.0
+    #: Settlements per pass. Each one is a transaction of about 2 s and the spot must be posted
+    #: every few seconds, so a backlog is worked off a little at a time between spot posts.
+    funding_per_pass: int = 2
     liquidation_interval_s: float = 15.0
     #: Wait this long into a new epoch before settling it, so a slightly fast local clock cannot
     #: name an epoch the chain has not reached ("epoch is not current").
@@ -179,9 +182,12 @@ class Keeper:
             return
         rows = {r.series: r for r in self.quoter.rows(snap, now)}
         first_error: Exception | None = None
+        sent = 0
         for s in snap.series.values():
             if s.last_epoch >= epoch:
                 continue
+            if sent >= self.cfg.funding_per_pass:
+                break  # the rest on the next pass, after the spot job has had its turn
             row = rows.get(s.id)
             spot = snap.fresh_spot(s.underlying, now)
             if row is None or spot is None:
@@ -204,6 +210,7 @@ class Keeper:
                 mark, intr, self.quoter.cfg.funding_fraction, snap.params.max_funding_rate
             )
             update = FundingUpdate(s.id, epoch, rate, mark)
+            sent += 1
             try:
                 res = self.sender.call(
                     self.contract_id,
@@ -232,7 +239,8 @@ class Keeper:
                 }
             )
             log.info("funding %s epoch %d rate %d mark %d", s.id, epoch, rate, mark)
-        self.cache.refresh()
+        if sent:
+            self.cache.refresh()
         if first_error is not None:
             raise first_error
 

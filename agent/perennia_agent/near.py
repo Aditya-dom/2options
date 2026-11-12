@@ -11,15 +11,14 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-import urllib.error
-import urllib.request
+import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from .rpc import RpcError
+from .rpc import RpcError, post
 
 TGAS = 10**12
 YOCTO_PER_NEAR = 10**24
@@ -201,14 +200,7 @@ class TxError(RpcError):
 
 def _call(rpc_url: str, method: str, params: Any, timeout: float) -> Any:
     payload = {"jsonrpc": "2.0", "id": "perennia-agent", "method": method, "params": params}
-    req = urllib.request.Request(
-        rpc_url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310 - operator-configured RPC
-            body = json.loads(r.read())
-    except urllib.error.HTTPError as e:
-        raise RpcError(f"{method}: HTTP {e.code}") from e
+    body = post(rpc_url, payload, timeout)
     if "error" in body:
         raise RpcError(f"{method}: {json.dumps(body['error'])[:400]}")
     return body["result"]
@@ -262,6 +254,37 @@ class Account:
             raise RpcError(f"access key for {self.account_id}: {r['error']}")
         return int(r["nonce"]), b58decode(r["block_hash"])
 
+    def _submit(self, signed: bytes, tx_hash: str) -> Any:
+        """Send and wait until every receipt has executed, so a contract panic comes back here.
+
+        Some providers answer HTTP 408 when that wait outlasts their own limit. The transaction
+        is usually already on its way, so ask for its outcome instead of reporting a failure.
+        """
+        wait = "EXECUTED_OPTIMISTIC"
+        try:
+            return _call(
+                self.rpc_url,
+                "send_tx",
+                {"signed_tx_base64": base64.b64encode(signed).decode(), "wait_until": wait},
+                self.timeout,
+            )
+        except RpcError as e:
+            if "HTTP 408" not in str(e):
+                raise
+        last: Exception | None = None
+        for _ in range(6):
+            time.sleep(1.0)
+            try:
+                return _call(
+                    self.rpc_url,
+                    "tx",
+                    {"tx_hash": tx_hash, "sender_account_id": self.account_id, "wait_until": wait},
+                    self.timeout,
+                )
+            except RpcError as e:  # not known yet, or still waiting
+                last = e
+        raise RpcError(f"{tx_hash}: no outcome after a timeout ({last})")
+
     def send(self, receiver_id: str, actions: list[Action]) -> TxResult:
         chain_nonce, block_hash = self._access_key()
         nonce = max(chain_nonce, self._nonce or 0) + 1
@@ -270,12 +293,7 @@ class Account:
         )
         signed, tx_hash = sign_transaction(self.key, tx)
         try:
-            r = _call(
-                self.rpc_url,
-                "broadcast_tx_commit",
-                [base64.b64encode(signed).decode()],
-                self.timeout,
-            )
+            r = self._submit(signed, tx_hash)
         except Exception:
             self._nonce = None  # unknown whether it landed; re-read the nonce next time
             raise

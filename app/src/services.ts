@@ -21,7 +21,7 @@ export const world: DemoWorld | null = isDemo ? new DemoWorld() : null;
 
 export const backend: Backend = world
   ? new DemoBackend(world)
-  : new ChainBackend(config.contractId, config.usdcId, config.rpcUrl, getWallet);
+  : new ChainBackend(config.contractId, config.usdcId, config.rpcUrls, getWallet);
 
 export const agent: Agent = world
   ? demoAgent(world)

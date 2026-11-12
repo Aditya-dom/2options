@@ -107,8 +107,11 @@ class Snapshot:
         return sp.price
 
 
-def fetch_snapshot(view: Viewer, now_ns: int | None = None) -> Snapshot:
-    params = Params.from_view(view("get_params", None))
+def fetch_snapshot(
+    view: Viewer, now_ns: int | None = None, slow: tuple[Params, bool] | None = None
+) -> Snapshot:
+    """`slow` reuses the parameters and pause flag from an earlier snapshot (they rarely change)."""
+    params, paused = slow if slow else (Params.from_view(view("get_params", None)), None)
     series = {s.id: s for s in (Series.from_view(j) for j in view("list_series", None))}
     spots: dict[Underlying, Spot] = {}
     for u in sorted({s.underlying for s in series.values()}):
@@ -121,7 +124,7 @@ def fetch_snapshot(view: Viewer, now_ns: int | None = None) -> Snapshot:
         series=series,
         spots=spots,
         vault_cash=_int(vault["cash"]),
-        paused=bool(view("is_paused", None)),
+        paused=bool(view("is_paused", None)) if paused is None else paused,
         fetched_ns=now_ns if now_ns is not None else time.time_ns(),
     )
 
@@ -131,14 +134,25 @@ class ChainCache:
     """Latest snapshot, shared between the HTTP threads and the keeper."""
 
     view: Viewer
-    max_age_s: float = 2.0
+    max_age_s: float = 4.0
+    #: How long the parameters and the pause flag are reused before being read again.
+    slow_age_s: float = 30.0
     _snap: Snapshot | None = field(default=None, init=False)
+    _slow_ns: int = field(default=0, init=False)
     _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
 
     def refresh(self) -> Snapshot:
-        snap = fetch_snapshot(self.view)
+        with self._lock:
+            prev, slow_ns = self._snap, self._slow_ns
+        now = time.time_ns()
+        reuse = prev is not None and now - slow_ns < self.slow_age_s * NS
+        snap = fetch_snapshot(
+            self.view, slow=(prev.params, prev.paused) if prev and reuse else None
+        )
         with self._lock:
             self._snap = snap
+            if not reuse:
+                self._slow_ns = now
         return snap
 
     def get(self) -> Snapshot:

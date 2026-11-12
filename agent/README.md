@@ -7,7 +7,7 @@ Standard library plus `cryptography`. No web framework and no NEAR SDK, so the i
 ```bash
 cd agent
 uv sync --python 3.11
-uv run pytest                                    # 110 tests
+uv run pytest                                    # 111 tests
 uv run ruff check . && uv run mypy perennia_agent
 
 cp .env.example .env                             # fill in keys; .env is ignored by git
@@ -27,7 +27,7 @@ From the repo root the same things are `make near-bootstrap`, `make near-agent` 
 5. `make near-agent`. `GET /health` shows the spot age and the keeper's last actions.
 6. Point the app at it: `VITE_CONTRACT_ID`, `VITE_USDC_ID`, `VITE_AGENT_URL=http://localhost:8787`. Anyone can get test USDC with `admin mint --to <account> --amount 10000`.
 
-None of this has been run against a live network yet. See "Not verified" below.
+This ran end to end on testnet on Nov 12. See "Not verified" below for what is still open.
 
 ## HTTP API
 
@@ -96,7 +96,9 @@ make near-fixtures    # regenerates all three after changing contract types, mar
 
 ## Not verified
 
-- **No live run.** Nothing here has traded against a deployed contract. The quoter, keeper and server are tested against an in-memory stand-in that verifies signatures and enforces the contract's sequencing, epoch and band checks. A public testnet node did parse a transaction built by `near.py` (it was rejected only because the throwaway signer does not exist), and the spot feed runs against the live venues.
+- **Liquidation and LP claim have not run live.** Everything else has: `scripts/e2e_testnet.py <account.testnet>` runs 27 checks with real transactions against the testnet deployment (deposit, trades, rejected replays and forgeries, a two-leg batch, withdraw, LP deposit and redeem, close-out, solvency). Liquidation needs a price move and the claim needs the one-hour cooldown.
+- **Public RPCs throttle.** FastNEAR rate-limited the agent during testing; it now retries on HTTP 429 and reads parameters every 30 s instead of every pass. `NEAR_RPC_URL` picks the endpoint. Transactions go through `send_tx`, and a provider timeout (HTTP 408) is followed up by asking for the transaction's outcome.
+- **Do not transact from the keeper's account while it runs.** Access-key nonces collide and one of the two transactions is dropped; the keeper retries, a script may not.
 - **A quote is a short free option.** A taker can hold a signed quote for its whole lifetime (28 s with the preset) and execute only if spot moved their way. The spread is the only compensation. A shorter TTL or a wider spread for larger sizes are the levers.
 - **No hedging.** `/inventory` reports the hedge target; nothing places orders (#38).
 - **No TEE.** `/attestation` returns the key; `code_hash` and `tee_quote_url` are passed through from the environment once the agent runs as a Shade Agent (#34).
