@@ -1,10 +1,10 @@
-"""Margin parity with the contract (fixture from contracts/perennia/examples/margin_vectors.rs)."""
+"""Margin parity with the contract (fixture from contracts/twooptions/examples/margin_vectors.rs)."""
 
 import json
 from pathlib import Path
 
-from perennia_agent import margin
-from perennia_agent.wire import Underlying
+from twooptions_agent import margin
+from twooptions_agent.wire import Underlying
 
 FIXTURE = json.loads(
     (

@@ -40,7 +40,7 @@ async function viewOnce<T>(rpcUrl: string, accountId: string, method: string, ar
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         jsonrpc: '2.0',
-        id: `perennia-${++nextId}`,
+        id: `twooptions-${++nextId}`,
         method: 'query',
         params: {
           request_type: 'call_function',

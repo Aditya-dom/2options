@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 export const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
-const KEY = 'perennia-panel-sizes';
+const KEY = 'twooptions-panel-sizes';
 
 function read(name: string): number | null {
   try {

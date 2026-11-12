@@ -8,7 +8,7 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from perennia_agent.wire import FundingUpdate, Quote, SpotUpdate, Underlying, digest, sign
+from twooptions_agent.wire import FundingUpdate, Quote, SpotUpdate, Underlying, digest, sign
 
 FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "wire_vectors.json").read_text())
 PARSERS = {
@@ -54,7 +54,7 @@ def test_encoding_digest_and_signature_match_rust(v: dict[str, object]) -> None:
 
 def test_domain_separation_changes_the_digest() -> None:
     s = SpotUpdate(Underlying.ETH, 1, 2, 3)
-    assert digest(CONTRACT, s) != digest("perennia.near", s)
+    assert digest(CONTRACT, s) != digest("twooptions.near", s)
 
 
 def test_out_of_range_values_are_rejected() -> None:

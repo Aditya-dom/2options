@@ -1,7 +1,7 @@
 //! Test USDC: a NEP-141 token with 6 decimals and an open faucet. TESTNET ONLY.
 //!
 //! Anyone can mint to anyone, up to `MAX_MINT` per call, so the token is worthless by design.
-//! It exists so the perennia contract can be exercised end to end on testnet without depending
+//! It exists so the twooptions contract can be exercised end to end on testnet without depending
 //! on someone else's faucet. Never point a mainnet deployment at it.
 //!
 //! The token logic is `near-contract-standards`' `FungibleToken`; this file only adds the
@@ -133,7 +133,7 @@ impl FungibleTokenMetadataProvider for TestUsdc {
     fn ft_metadata(&self) -> FungibleTokenMetadata {
         FungibleTokenMetadata {
             spec: FT_METADATA_SPEC.to_string(),
-            name: "Test USDC (Perennia testnet faucet)".to_string(),
+            name: "Test USDC (TwoOptions testnet faucet)".to_string(),
             symbol: "USDC".to_string(),
             icon: None,
             reference: None,

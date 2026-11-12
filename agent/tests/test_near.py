@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from perennia_agent import near
+from twooptions_agent import near
 
 FIXTURE = json.loads((Path(__file__).parent / "fixtures" / "near_tx_vectors.json").read_text())
 KEY = near.parse_secret_key(FIXTURE["secret_seed_hex"])

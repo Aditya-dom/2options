@@ -4,7 +4,6 @@ import { useMountEffect } from './hooks/useMountEffect';
 import { ArrowRight, Sun, Moon } from 'lucide-react';
 import { useThemeStore } from './theme';
 
-const X_URL = 'https://x.com/perennia_fi';
 
 /* ── Constants ── */
 const CYAN = '#00e5ff';
@@ -200,8 +199,8 @@ export default function LandingPage() {
         {/* NAV */}
         <nav style={{ display:'flex', alignItems:'center', padding:'0 32px', height:58, borderBottom:`1px solid ${t.border}`, transition:'border-color 0.4s' }}>
           <a href="#/" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none' }}>
-            <img src="/logo.svg" alt="Perennia" style={{ width:24, height:24, borderRadius:3 }}/>
-            <span style={{ fontFamily:MONO, fontSize:12, fontWeight:600, letterSpacing:'0.12em', color:t.text, transition:'color 0.4s' }}>PERENNIA</span>
+            <img src="/logo.svg" alt="2options" style={{ width:24, height:24, borderRadius:3 }}/>
+            <span style={{ fontFamily:MONO, fontSize:12, fontWeight:600, letterSpacing:'0.12em', color:t.text, transition:'color 0.4s' }}>2OPTIONS</span>
           </a>
           <div style={{ flex:1 }}/>
           <div className="lp-nav" style={{ display:'flex', alignItems:'center', gap:4 }}>
@@ -285,7 +284,7 @@ export default function LandingPage() {
         {/* PROTOCOL */}
         <section style={{ padding:'72px 40px', textAlign:'center' }}>
           <FadeIn>
-            <span style={{ fontFamily:MONO, fontSize:10, color:CYAN, letterSpacing:'0.22em', display:'block', marginBottom:18 }}>PERENNIA</span>
+            <span style={{ fontFamily:MONO, fontSize:10, color:CYAN, letterSpacing:'0.22em', display:'block', marginBottom:18 }}>2OPTIONS</span>
             <p style={{ fontFamily:SERIF, fontSize:'clamp(15px,1.7vw,18px)', fontWeight:400, fontStyle:'italic', color:t.muted, lineHeight:1.85, margin:'0 auto 32px', maxWidth:520, transition:'color 0.4s' }}>
               Everlasting options give traders long-term options exposure without the effort, risk, or expense of rolling positions.
             </p>
@@ -346,18 +345,9 @@ export default function LandingPage() {
         <footer style={{ borderTop:`1px solid ${t.border}`, padding:'28px 32px', textAlign:'center', transition:'border-color 0.4s' }}>
           <a href="#/" style={{ display:'inline-flex', alignItems:'center', gap:8, textDecoration:'none', marginBottom:14 }}>
             <img src="/logo.svg" alt="" style={{ width:16, height:16, opacity:0.5 }}/>
-            <span style={{ fontFamily:MONO, fontSize:10, fontWeight:600, color:t.ghost, letterSpacing:'0.1em', transition:'color 0.4s' }}>PERENNIA</span>
+            <span style={{ fontFamily:MONO, fontSize:10, fontWeight:600, color:t.ghost, letterSpacing:'0.1em', transition:'color 0.4s' }}>2OPTIONS</span>
           </a>
-          <div style={{ display:'flex', justifyContent:'center', gap:18, flexWrap:'wrap' }}>
-            {[
-              { label:'X', href:X_URL, external:true },
-            ].map(l=>(
-              <a key={l.label} href={l.href} {...(l.external ? { target:'_blank', rel:'noreferrer' } : {})} className="f-link" style={{
-                fontFamily:MONO, fontSize:10, color:t.footerDim, textDecoration:'none', transition:'color 0.2s', letterSpacing:'0.04em',
-              }}>{l.label}</a>
-            ))}
-          </div>
-          <p style={{ fontFamily:MONO, fontSize:9, color:t.footerDim, marginTop:14, opacity:0.6, transition:'color 0.4s' }}>&copy; {new Date().getFullYear()} Perennia Protocol</p>
+          <p style={{ fontFamily:MONO, fontSize:9, color:t.footerDim, marginTop:14, opacity:0.6, transition:'color 0.4s' }}>&copy; {new Date().getFullYear()} 2options Protocol</p>
         </footer>
 
       </div>

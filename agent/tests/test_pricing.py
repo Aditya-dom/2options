@@ -2,9 +2,9 @@ import math
 
 import pytest
 
-from perennia_agent import pricing
-from perennia_agent.greeks import everlasting_delta
-from perennia_agent.wire import Underlying
+from twooptions_agent import pricing
+from twooptions_agent.greeks import everlasting_delta
+from twooptions_agent.wire import Underlying
 
 
 def test_half_weights_reproduce_the_paradigm_series() -> None:

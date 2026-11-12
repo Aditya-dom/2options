@@ -8,11 +8,11 @@ from pathlib import Path
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from perennia_agent import config, near
-from perennia_agent.chain import ChainCache
-from perennia_agent.quoter import Quoter
-from perennia_agent.server import App, RateLimiter, make_handler
-from perennia_agent.store import Store
+from twooptions_agent import config, near
+from twooptions_agent.chain import ChainCache
+from twooptions_agent.quoter import Quoter
+from twooptions_agent.server import App, RateLimiter, make_handler
+from twooptions_agent.store import Store
 
 from .fakes import CONTRACT, FakeChain
 
@@ -193,38 +193,38 @@ def test_config_reads_env_and_rejects_bad_values(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     for k in (
-        "PERENNIA_CONTRACT_ID",
+        "TWOOPTIONS_CONTRACT_ID",
         "NEAR_NETWORK",
         "NEAR_RPC_URL",
         "AGENT_PRIVATE_KEY",
-        "PERENNIA_VOL_ETH",
+        "TWOOPTIONS_VOL_ETH",
     ):
         monkeypatch.delenv(k, raising=False)
-    with pytest.raises(config.ConfigError, match="PERENNIA_CONTRACT_ID"):
+    with pytest.raises(config.ConfigError, match="TWOOPTIONS_CONTRACT_ID"):
         config.network()
     env = tmp_path / ".env"
     env.write_text(
-        f'# comment\nPERENNIA_CONTRACT_ID="perennia.testnet"\nAGENT_PRIVATE_KEY={near.secret_key_str(KEY)}\nPERENNIA_VOL_ETH=0.75\n'
+        f'# comment\nTWOOPTIONS_CONTRACT_ID="twooptions.testnet"\nAGENT_PRIVATE_KEY={near.secret_key_str(KEY)}\nTWOOPTIONS_VOL_ETH=0.75\n'
     )
     config.load_dotenv(env)
     net = config.network()
-    assert (net.network, net.contract_id) == ("testnet", "perennia.testnet")
+    assert (net.network, net.contract_id) == ("testnet", "twooptions.testnet")
     assert net.rpc_url.startswith("https://")
     assert near.public_key_str(config.agent_key()) == near.public_key_str(KEY)
     assert config.quoter_config().atm_vol[near_underlying("ETH")] == 0.75
     assert config.keeper_account(net) is None
 
-    monkeypatch.setenv("PERENNIA_VOL_ETH", "9")
-    with pytest.raises(config.ConfigError, match="PERENNIA_VOL_ETH"):
+    monkeypatch.setenv("TWOOPTIONS_VOL_ETH", "9")
+    with pytest.raises(config.ConfigError, match="TWOOPTIONS_VOL_ETH"):
         config.quoter_config()
     monkeypatch.setenv("AGENT_PRIVATE_KEY", "ed25519:nonsense")
     with pytest.raises(config.ConfigError, match="AGENT_PRIVATE_KEY"):
         config.agent_key()
-    for k in ("PERENNIA_CONTRACT_ID", "AGENT_PRIVATE_KEY", "PERENNIA_VOL_ETH"):
+    for k in ("TWOOPTIONS_CONTRACT_ID", "AGENT_PRIVATE_KEY", "TWOOPTIONS_VOL_ETH"):
         monkeypatch.delenv(k, raising=False)
 
 
 def near_underlying(name: str):  # type: ignore[no-untyped-def]
-    from perennia_agent.wire import Underlying
+    from twooptions_agent.wire import Underlying
 
     return Underlying[name]

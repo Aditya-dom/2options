@@ -4,7 +4,7 @@ Reads state, not events: the contract keeps `net_trader_size` per series exactly
 and liquidation updates it), the vault holds the opposite side, and `list_series` returns it.
 That is authoritative and needs no indexer; NEAR RPC cannot list past events anyway.
 
-    uv run python -m perennia_agent.inventory --contract perennia.testnet [--network testnet]
+    uv run python -m twooptions_agent.inventory --contract twooptions.testnet [--network testnet]
 """
 
 from __future__ import annotations

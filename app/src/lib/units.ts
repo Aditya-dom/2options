@@ -1,5 +1,5 @@
 /**
- * Fixed-point units used by the perennia contract. All on-chain numbers are integers; the JSON
+ * Fixed-point units used by the twooptions contract. All on-chain numbers are integers; the JSON
  * API carries 64/128-bit values as decimal strings. Keep them as bigint until display.
  *
  * | quantity                         | scale |

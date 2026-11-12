@@ -3,14 +3,14 @@ from decimal import Decimal
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from perennia_agent import margin
-from perennia_agent.chain import ChainCache, fetch_snapshot
-from perennia_agent.keeper import Keeper
-from perennia_agent.near import TxError
-from perennia_agent.quoter import Quoter
-from perennia_agent.spot import SpotFeed, VenueQuote
-from perennia_agent.store import Store
-from perennia_agent.wire import Underlying
+from twooptions_agent import margin
+from twooptions_agent.chain import ChainCache, fetch_snapshot
+from twooptions_agent.keeper import Keeper
+from twooptions_agent.near import TxError
+from twooptions_agent.quoter import Quoter
+from twooptions_agent.spot import SpotFeed, VenueQuote
+from twooptions_agent.store import Store
+from twooptions_agent.wire import Underlying
 
 from .fakes import CONTRACT, HOUR, SEC, T0, FakeChain
 

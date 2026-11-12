@@ -1,4 +1,4 @@
-"""Integer port of the contract's margin and valuation (contracts/perennia/src/margin.rs, math.rs).
+"""Integer port of the contract's margin and valuation (contracts/twooptions/src/margin.rs, math.rs).
 
 The quoter uses it to answer one question before signing: would this trade push the vault past
 its risk limit? A quote that the contract will reject is worse than no quote.

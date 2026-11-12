@@ -1,4 +1,4 @@
-"""An in-memory stand-in for the perennia contract's views and keeper methods.
+"""An in-memory stand-in for the twooptions contract's views and keeper methods.
 
 It verifies agent signatures the way the contract does and enforces the checks the keeper has
 to get right (sequence, staleness, epoch, band), so tests fail for the same reasons a real
@@ -14,12 +14,12 @@ from typing import Any
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from perennia_agent import margin, wire
-from perennia_agent.near import TxError, TxResult
+from twooptions_agent import margin, wire
+from twooptions_agent.near import TxError, TxResult
 
 SEC = 1_000_000_000
 HOUR = 3_600 * SEC
-CONTRACT = "perennia.testnet"
+CONTRACT = "twooptions.testnet"
 #: 2026-11-10T00:00:00Z, the start of an hourly funding epoch.
 T0 = 1_794_268_800 * SEC
 

@@ -16,14 +16,14 @@ The original handoff below is unchanged; where it says something is not built, t
 
 | Your ask (HANDOFF_GAURAV.md) | State |
 |---|---|
-| §1.1 Deploy perennia | Tooling done, **not run**: `make near-wasm && make near-bootstrap` (`agent/perennia_agent/admin.py`). Needs a funded testnet owner account, about 11 NEAR. |
+| §1.1 Deploy 2options | Tooling done, **not run**: `make near-wasm && make near-bootstrap` (`agent/twooptions_agent/admin.py`). Needs a funded testnet owner account, about 11 NEAR. |
 | §1.2 Which USDC, how to get it | A mintable test token, `contracts/test-usdc`, deployed by bootstrap at `usdc.<owner>`. Anyone can call `mint`; `admin mint --to <you> --amount 10000` does it for you. |
 | §1.3 Register the contract with USDC | Bootstrap step `register`. |
 | §1.4 `add_series` | Bootstrap step `add-series`: the at-the-money strike and two either side, about 2.5% of spot apart, calls and puts, around the live spot. |
-| §1.5 Keeper posting spot | `agent/perennia_agent/keeper.py`, every 5 s, using your `SpotFeed`. Seeded from the contract's spot. |
+| §1.5 Keeper posting spot | `agent/twooptions_agent/keeper.py`, every 5 s, using your `SpotFeed`. Seeded from the contract's spot. |
 | §1.6 Keeper settling funding | Same file. Once per epoch per series, 15 s into the epoch, with the epoch's average mark. |
 | §1.7 Seed LP liquidity | Bootstrap step `seed-lp`, 250,000 test USDC by default. |
-| §1.8 Agent URL with CORS | `make near-agent` serves on `:8787`. Origins come from `PERENNIA_CORS_ORIGINS` (default `http://localhost:3001`). |
+| §1.8 Agent URL with CORS | `make near-agent` serves on `:8787`. Origins come from `TWOOPTIONS_CORS_ORIGINS` (default `http://localhost:3001`). |
 | §3.1 `entry_index` in `PositionView` | Done, with a test. The app already reads it, so ACCRUED fills in. |
 | §3.2 Funding history | `GET /funding/history`, in your shape. I wired it into `useProtocol` and the Funding page (loaded once, merged with live settlements). Please check that edit. |
 | §4 API | All of it, plus `iv` on `/chain`, `/inventory` and `/health`. Documented in `agent/README.md`. |
@@ -70,7 +70,7 @@ An options venue on NEAR where the **contract holds the money** and an **agent s
 
 ```
 Trader ──ask for price──▶ Agent (signs quote) ──signed quote──▶ Trader
-Trader ──submit signed quote──▶ perennia contract (verifies, settles, tracks margin)
+Trader ──submit signed quote──▶ 2options contract (verifies, settles, tracks margin)
 Agent ──every ~10s──▶ post_spot        Agent ──hourly──▶ settle_funding
 Agent ──reads vault delta──▶ hedges on Hyperliquid testnet
 ```
@@ -87,7 +87,7 @@ Why the vault hedges: when a trader buys a call, the vault is short it. Hedging 
 |---|---|---|
 | Plan, architecture diagrams, scope tiers | `NEAR_HACKATHON_PLAN.md` | Written |
 | Contract interface spec (v0) | `NEAR_CONTRACT_SPEC.md` | Written. Where the code differs, `contracts/README.md` wins |
-| **The contract** | `contracts/perennia/` | Written. 70 unit tests pass, clippy clean, builds to a ~530 KB wasm |
+| **The contract** | `contracts/twooptions/` | Written. 70 unit tests pass, clippy clean, builds to a ~530 KB wasm |
 | Hyperliquid hedging check | scratch script, results below | Signing scheme verified. No real order yet |
 | Issue board | `near-board.html` | Done. Saves in your browser only |
 | GitHub issues script | `scripts/create_github_board.mjs` | Written, not run (`gh` was not installed) |
@@ -129,7 +129,7 @@ Screens to deliver: wallet login; deposit and withdraw; option chain with price,
 
 ## 4. Contract cheat sheet for the frontend
 
-Source of truth: `contracts/perennia/src/lib.rs` and `types.rs`. Full detail in `contracts/README.md`.
+Source of truth: `contracts/twooptions/src/lib.rs` and `types.rs`. Full detail in `contracts/README.md`.
 
 **JSON rules:** every 64-bit and 128-bit number is a **string** (`"12000000"`). Enums are plain strings (`"Buy"`, `"Call"`, `"ETH"`).
 
@@ -183,7 +183,7 @@ The contract panics with readable text. Map these to friendly messages:
 | `trading is paused` / `deposits are paused` | Show a banner |
 
 ### Events
-The contract logs `EVENT_JSON:{"standard":"perennia",...}`. Events: `Deposit`, `Withdraw`, `Trade`, `FundingSettled`, `FundingApplied`, `SpotUpdated`, `Liquidation`, `LpMint`, `LpRedeemRequest`, `LpClaim`.
+The contract logs `EVENT_JSON:{"standard":"twooptions",...}`. Events: `Deposit`, `Withdraw`, `Trade`, `FundingSettled`, `FundingApplied`, `SpotUpdated`, `Liquidation`, `LpMint`, `LpRedeemRequest`, `LpClaim`.
 
 ---
 
@@ -223,7 +223,7 @@ Until the real agent exists, mock these responses so you can build the screens. 
 
 - Everything counts only if it is in the repo and was written Nov 1 to Nov 14. Commit in small pieces.
 - Never commit private keys, seed phrases or `.env` files.
-- The contract builds with `cd contracts/perennia && cargo test --lib`. If linking fails with `libSystem.tbd`, export `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk` first.
+- The contract builds with `cd contracts/twooptions && cargo test --lib`. If linking fails with `libSystem.tbd`, export `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk` first.
 - Ask early if anything in the contract's API makes the UI painful. Changing the contract is cheap now and expensive after Nov 8.
 
 ## 9. Questions we need your answer on

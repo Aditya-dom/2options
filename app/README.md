@@ -1,6 +1,6 @@
-# Perennia app (NEAR)
+# 2options app (NEAR)
 
-React + Vite frontend for the perennia contract (`contracts/perennia`). It replaces the Solana/Privy frontend in `frontend/`, which is kept for reference only.
+React + Vite frontend for the 2options contract (`contracts/twooptions`). It replaces our earlier Solana/Privy frontend (see the README's prior-work section).
 
 ```bash
 cd app
@@ -64,7 +64,7 @@ src/
 `src/lib/fixtures/margin_vectors.json` is generated from the contract's own code:
 
 ```bash
-cd contracts/perennia
+cd contracts/twooptions
 cargo run --example margin_vectors > ../../app/src/lib/fixtures/margin_vectors.json
 ```
 
@@ -72,7 +72,7 @@ cargo run --example margin_vectors > ../../app/src/lib/fixtures/margin_vectors.j
 
 ## Agent API
 
-The quote server is `agent/perennia_agent/server.py`; `agent/README.md` documents every endpoint. The app uses `/chain`, `/quote`, `/spot`, `/attestation` and `/funding/history` (loaded once, so the Funding page shows past settlements). Run it with `make near-agent` and set `VITE_AGENT_URL=http://localhost:8787`. The agent allows the origins in its `PERENNIA_CORS_ORIGINS`. `VITE_AGENT_PUBLIC_KEY` can pin the key instead of trusting `/attestation`.
+The quote server is `agent/twooptions_agent/server.py`; `agent/README.md` documents every endpoint. The app uses `/chain`, `/quote`, `/spot`, `/attestation` and `/funding/history` (loaded once, so the Funding page shows past settlements). Run it with `make near-agent` and set `VITE_AGENT_URL=http://localhost:8787`. The agent allows the origins in its `TWOOPTIONS_CORS_ORIGINS`. `VITE_AGENT_PUBLIC_KEY` can pin the key instead of trusting `/attestation`.
 
 ## Open items between the app and the agent
 

@@ -1,5 +1,5 @@
 /**
- * Port of contracts/perennia/src/{math,margin}.rs for pre-trade previews. Same integers, same
+ * Port of contracts/twooptions/src/{math,margin}.rs for pre-trade previews. Same integers, same
  * rounding, so a preview that passes here passes on chain for the same spot and marks.
  * Parity is checked against the Rust code in margin.test.ts (vectors from scripts/margin_vectors).
  */

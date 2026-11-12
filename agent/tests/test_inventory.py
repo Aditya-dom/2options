@@ -1,8 +1,8 @@
 import pytest
 
-from perennia_agent.greeks import everlasting_delta
-from perennia_agent.inventory import SeriesState, compute, rebalance
-from perennia_agent.wire import Underlying
+from twooptions_agent.greeks import everlasting_delta
+from twooptions_agent.inventory import SeriesState, compute, rebalance
+from twooptions_agent.wire import Underlying
 
 ETH, NEAR = Underlying.ETH, Underlying.NEAR
 USD = 10**8

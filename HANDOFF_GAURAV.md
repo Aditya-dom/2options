@@ -11,15 +11,15 @@ From Aditya, Nov 10, 2026 (final update for today). This replies to `HANDOFF_ADI
 | #33 Deposit from another chain | In Progress | Works end to end in the demo against live 1Click quotes; waits on the mainnet decision in §5. |
 | #35 Agent badge | In Progress | Verifies every quote's signature and the key's registration; the TEE half waits on #5 and #34. |
 | #6 1Click spike | Done | Answers in §5. |
-| #22 Spot feed | Done | `agent/perennia_agent/spot.py`; your keeper signs and posts. |
-| #24 Inventory / net delta | In Progress | `agent/perennia_agent/inventory.py`; waits on a deployed contract to run against. |
+| #22 Spot feed | Done | `agent/twooptions_agent/spot.py`; your keeper signs and posts. |
+| #24 Inventory / net delta | In Progress | `agent/twooptions_agent/inventory.py`; waits on a deployed contract to run against. |
 | #42 CI + one-command setup | Done | `make near-setup`, `make near-test`, `make near-dev`; `near` workflow green. |
 | #8 Demo storyboard (shared) | In Progress | Draft in `DEMO_STORYBOARD.md`: a shot list with dependencies and fallbacks. Please review; three beats hinge on the decisions in §2, §4 and §5 and on which stretch goal (#37) survives. |
 | #3 Testnet account, #5 Shade Agent | Todo | Mine, next (§7). |
 
 Run `make near-setup && make near-dev`, then open http://localhost:3001 with no `.env`, to get the full demo.
 
-The demo copies `trade`, `withdraw`, `lp_*` and `apply_funding` from `lib.rs` step by step: same checks, same rounding, same panic strings. It skips only the signature check. The margin code is a TypeScript port that matches `margin.rs`/`math.rs` exactly on 2,697 cases generated from your code (`contracts/perennia/examples/margin_vectors.rs`, a new example file; the wasm build is untouched). The trade ticket uses it to show margin before signing and to block trades the contract would reject.
+The demo copies `trade`, `withdraw`, `lp_*` and `apply_funding` from `lib.rs` step by step: same checks, same rounding, same panic strings. It skips only the signature check. The margin code is a TypeScript port that matches `margin.rs`/`math.rs` exactly on 2,697 cases generated from your code (`contracts/twooptions/examples/margin_vectors.rs`, a new example file; the wasm build is untouched). The trade ticket uses it to show margin before signing and to block trades the contract would reject.
 
 Nothing has been tested against a deployed contract, because nothing is deployed. I did run the app in chain mode against real testnet RPC with a mock agent. That run found a crash that stopped the wallet selector from starting (a wallet SDK reads Node's `process`), which is now fixed: the modal lists Meteor, HOT and MyNearWallet. Pointing the app at testnet takes three env vars. Everything below is what I need for that.
 
@@ -29,9 +29,9 @@ Nothing has been tested against a deployed contract, because nothing is deployed
 
 | # | What | Why the app needs it |
 |---|---|---|
-| 1 | **Deploy `perennia` to testnet** and send me the account id. | `VITE_CONTRACT_ID` |
+| 1 | **Deploy `twooptions` to testnet** and send me the account id. | `VITE_CONTRACT_ID` |
 | 2 | **Which USDC token** (account id), and **how I get test USDC** for my account (mint method, faucet, or send me some). | `VITE_USDC_ID`. The app reads `ft_balance_of`, `storage_balance_of` and `storage_balance_bounds` on it. |
-| 3 | **Register the perennia contract with the USDC token** (`storage_deposit` for the contract account). | Otherwise `ft_transfer_call` fails inside the token and no deposit reaches `ft_on_transfer`. |
+| 3 | **Register the 2options contract with the USDC token** (`storage_deposit` for the contract account). | Otherwise `ft_transfer_call` fails inside the token and no deposit reaches `ft_on_transfer`. |
 | 4 | **`add_series` for the strike grid.** See the decision in §2 before choosing strikes. | The chain renders whatever `list_series` returns. |
 | 5 | **Keeper posting `post_spot`** every ≤10 s for every underlying with a series (`max_spot_age` is 30 s). | Without a fresh spot, `get_account` and `get_vault` return null equity and every trade or LP action reverts with `spot price is stale`. |
 | 6 | **Keeper running `settle_funding`** hourly per series. | Funding page and index. |
@@ -109,12 +109,12 @@ The badge checks `agent_public_key` against your `is_agent_key` view and verifie
 
 ### Signing helpers you can use
 
-`agent/perennia_agent/wire.py` encodes `Quote`, `SpotUpdate` and `FundingUpdate` and signs them. Its tests compare bytes, digests and signatures against `contracts/perennia/examples/wire_vectors.rs`, which uses your types and runs the signatures through `post_spot` and `settle_funding` on a real `Perennia` instance. If your quoter is in Python, import it; if not, the fixture (`agent/tests/fixtures/wire_vectors.json`) is a ready-made test for any language. The app's TypeScript check uses the same fixture.
+`agent/twooptions_agent/wire.py` encodes `Quote`, `SpotUpdate` and `FundingUpdate` and signs them. Its tests compare bytes, digests and signatures against `contracts/twooptions/examples/wire_vectors.rs`, which uses your types and runs the signatures through `post_spot` and `settle_funding` on a real `2options` instance. If your quoter is in Python, import it; if not, the fixture (`agent/tests/fixtures/wire_vectors.json`) is a ready-made test for any language. The app's TypeScript check uses the same fixture.
 
 ### Spot feed (#22) and inventory (#24)
 
-- **Spot feed:** `perennia_agent.spot`. Pyth Hermes now returns 401 without an API key, so the feed takes the median of Coinbase, Kraken, Binance and Hyperliquid. It holds instead of posting when fewer than 2 venues are fresh, when they disagree by more than 50 bps, or on a move your jump limit would refuse; `ts_ns`/`seq` never go backwards. Your keeper only needs to sign and post: `{"update": d.update.to_json(), "signature": sign(key, contract, d.update)}`. If we get a Pyth key, Pyth can be added as a fifth venue.
-- **Inventory:** `perennia_agent.inventory` reads `list_series` + `get_spot`, not events, because `net_trader_size` is already exact on chain. It returns the vault position and delta per series, net delta per underlying, and the perp `hedge_target`, plus `rebalance()` with a deadband. Swap `greeks.everlasting_delta` for #20's pricing when it lands.
+- **Spot feed:** `twooptions_agent.spot`. Pyth Hermes now returns 401 without an API key, so the feed takes the median of Coinbase, Kraken, Binance and Hyperliquid. It holds instead of posting when fewer than 2 venues are fresh, when they disagree by more than 50 bps, or on a move your jump limit would refuse; `ts_ns`/`seq` never go backwards. Your keeper only needs to sign and post: `{"update": d.update.to_json(), "signature": sign(key, contract, d.update)}`. If we get a Pyth key, Pyth can be added as a fifth venue.
+- **Inventory:** `twooptions_agent.inventory` reads `list_series` + `get_spot`, not events, because `net_trader_size` is already exact on chain. It returns the vault position and delta per series, net delta per underlying, and the perp `hedge_target`, plus `rebalance()` with a deadband. Swap `greeks.everlasting_delta` for #20's pricing when it lands.
 
 Live ETH is about $2,110 (Nov 10), not the $3,500 in the handoff. Strikes should be listed around the real spot.
 
@@ -124,9 +124,9 @@ Live ETH is about $2,110 (Nov 10), not the $3,500 in the handoff. Strikes should
 2. **1Click on testnet (#6, done):** 1Click is **mainnet only** (39 chains, no testnet).
    - Quotes, deposit addresses and status work **without an API key**; 1Click then adds its own fee (20 bps on SOL→USDC, 1 bp on Base USDC→USDC).
    - CORS allows any origin, so the app calls it directly. Delivery takes about 22–35 s after the deposit confirms.
-   - I deliver USDC to the **user's own NEAR wallet** and then run the normal deposit. 1Click's `customRecipientMsg` could `ft_transfer_call` straight into perennia, but `ft_on_transfer` credits `sender_id`, which would be the intents contract, not the user.
+   - I deliver USDC to the **user's own NEAR wallet** and then run the normal deposit. 1Click's `customRecipientMsg` could `ft_transfer_call` straight into twooptions, but `ft_on_transfer` credits `sender_id`, which would be the intents contract, not the user.
    - **Decision needed:** where do we demo #33?
-     - (a) perennia on mainnet with small caps;
+     - (a) 2options on mainnet with small caps;
      - (b) show the swap landing in a mainnet wallet, with the deposit on testnet shown separately;
      - (c) add `msg = "deposit:<account_id>"` to `ft_on_transfer` to credit a named account, which is safe because the sender pays.
 3. **Agent API:** keep your §5, with the units and two additions in §4 above.
@@ -134,10 +134,10 @@ Live ETH is about $2,110 (Nov 10), not the $3,500 in the handoff. Strikes should
 
 ## 6. Eligibility, before we submit
 
-- **#2 (can we reuse the pricing math?):** you closed the issue on Oct 24 with no comment. My board-setup script reset its status to Todo two minutes later; I've set it back to Done to match. Did the organizers answer? Please put their answer in the issue. Either way we need disclosure wording: `app/src/lib/pricing.ts` and `agent/perennia_agent/greeks.py` are ports of `core/everlasting.py`.
+- **#2 (can we reuse the pricing math?):** you closed the issue on Oct 24 with no comment. My board-setup script reset its status to Todo two minutes later; I've set it back to Done to match. Did the organizers answer? Please put their answer in the issue. Either way we need disclosure wording: `app/src/lib/pricing.ts` and `agent/twooptions_agent/greeks.py` are ports of `core/everlasting.py`.
 - **This repo's history starts Oct 23 with the whole Solana project** (201 files). The plan says to submit from a fresh public repo created on Nov 1, without the old history, because judges read the git log. When do we move, and what goes in? `contracts/`, `app/`, `agent/`, the plan and spec docs, and your quoter and keeper.
 - **#4 (fixed-point scheme) can be marked Done.** The contract settled it: USDC 1e6, prices 1e8, funding 1e9.
-- **The old `ci` workflow's macOS jobs were failing (fixed in ac00e81).** GitHub retired the macOS 14 runner image on Nov 2, 2026, after brownouts that cancelled the Nov 1 runs on `main`. `macos-14` jobs are now refused before they start. The matrix now uses `macos-15`, which is still arm64, and all 7 checks on PR #46 pass. `main` stays red until #46 merges. This workflow only builds the Solana-era `perennia_math` wheel, so dropping it is still an option.
+- **The old `ci` workflow's macOS jobs were failing (fixed in ac00e81).** GitHub retired the macOS 14 runner image on Nov 2, 2026, after brownouts that cancelled the Nov 1 runs on `main`. `macos-14` jobs are now refused before they start. The matrix now uses `macos-15`, which is still arm64, and all 7 checks on PR #46 pass. `main` stays red until #46 merges. This workflow only builds the Solana-era the earlier Rust math kernel wheel, so dropping it is still an option.
 
 ## 7. What I'm doing next
 

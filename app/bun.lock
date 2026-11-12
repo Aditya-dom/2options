@@ -3,7 +3,7 @@
   "configVersion": 1,
   "workspaces": {
     "": {
-      "name": "perennia-near-app",
+      "name": "twooptions-app",
       "dependencies": {
         "@near-js/transactions": "2.5.1",
         "@near-wallet-selector/core": "10.1.4",

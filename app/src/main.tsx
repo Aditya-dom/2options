@@ -13,7 +13,7 @@ function ConfigError({ errors }: { errors: string[] }) {
   const { t } = useTheme();
   return (
     <div style={{ padding: 24, fontFamily: t.MONO, fontSize: 12, color: t.RED, lineHeight: 1.6 }}>
-      <div style={{ color: t.WHITE, marginBottom: 8 }}>Perennia is misconfigured. Fix app/.env and restart:</div>
+      <div style={{ color: t.WHITE, marginBottom: 8 }}>2options is misconfigured. Fix app/.env and restart:</div>
       {errors.map(e => <div key={e}>• {e}</div>)}
     </div>
   );

@@ -1,5 +1,5 @@
 /**
- * Contract-facing types, mirroring contracts/perennia/src/types.rs. `*Json` types are the raw
+ * Contract-facing types, mirroring contracts/twooptions/src/types.rs. `*Json` types are the raw
  * view results (64/128-bit numbers as strings); the parsed types hold bigints.
  */
 

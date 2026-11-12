@@ -1,4 +1,4 @@
-# Perennia on NEAR
+# 2options on NEAR
 
 Everlasting options on NEAR: calls and puts that never expire. A buyer pays a small funding amount every hour instead of buying a dated contract and rolling it. A NEAR contract holds all the money and enforces margin. An off-chain agent proposes prices by signing quotes, and the contract checks every one of them.
 
@@ -8,14 +8,14 @@ Built at NEAR HACKATHON, Nov 1 to 14, 2026. Tracks: **Unstoppable DeFi**, AI Sec
 
 | Testnet | |
 |---|---|
-| Contract | `perennia.perennia-kjpnv.testnet` |
-| Test USDC (open faucet, worthless) | `usdc.perennia-kjpnv.testnet` |
+| Contract | `twooptions.twooptions-kjpnv.testnet` |
+| Test USDC (open faucet, worthless) | `usdc.twooptions-kjpnv.testnet` |
 
 ## Prior work, disclosed
 
 This repository holds only work built for the hackathon; its history begins on Nov 2, 2026. Before the hackathon we built an everlasting-options venue on a different chain (Pacifica, on Solana), in [gks2022004/nerf](https://github.com/gks2022004/nerf/tree/00fe59b). Nothing here imports or builds against it. These pieces were carried over as adapted copies:
 
-- **Pricing math.** The Black-Scholes and everlasting-series code in `agent/perennia_agent/pricing.py` and `app/src/lib/pricing.ts` follows [`core/black_scholes.py`](https://github.com/gks2022004/nerf/blob/00fe59b/core/black_scholes.py) and [`core/everlasting.py`](https://github.com/gks2022004/nerf/blob/00fe59b/core/everlasting.py). The NEAR agent changes the model: the series weights follow the funding rule the contract settles (`agent/README.md`, "Pricing").
+- **Pricing math.** The Black-Scholes and everlasting-series code in `agent/twooptions_agent/pricing.py` and `app/src/lib/pricing.ts` follows [`core/black_scholes.py`](https://github.com/gks2022004/nerf/blob/00fe59b/core/black_scholes.py) and [`core/everlasting.py`](https://github.com/gks2022004/nerf/blob/00fe59b/core/everlasting.py). The NEAR agent changes the model: the series weights follow the funding rule the contract settles (`agent/README.md`, "Pricing").
 - **The app's look.** The earlier frontend's visual design is reused on purpose:
   - copied with small edits: the landing page (`app/src/LandingPage.tsx`, copy updated for NEAR), the TradingView chart panel (`app/src/components/ChartPanel.tsx`), `app/src/hooks/useMountEffect.ts`, and the colour tokens in `app/src/theme.tsx`, from [`frontend/src`](https://github.com/gks2022004/nerf/tree/00fe59b/frontend/src);
   - rewritten for NEAR to the same layout and styling: the header, the option chain, the order panel, the tabbed positions panel and the payoff chart.
@@ -44,7 +44,7 @@ flowchart LR
     A[Agent<br/>pricing + signing] -->|2. signed quote| T
     T -->|3. trade quote, signature| C
     U[USDC token<br/>NEP-141] -->|ft_on_transfer<br/>deposit / lp| C
-    C[perennia contract<br/>custody, margin, funding,<br/>liquidation] -->|ft_transfer<br/>withdraw / claim| U
+    C[2options contract<br/>custody, margin, funding,<br/>liquidation] -->|ft_transfer<br/>withdraw / claim| U
     K[Keeper] -->|post_spot every 5 s<br/>settle_funding hourly<br/>liquidate| C
     A -. signs spot and<br/>funding updates .-> K
     V[Price venues<br/>Coinbase, Kraken,<br/>Binance, Hyperliquid] --> K
@@ -52,7 +52,7 @@ flowchart LR
 
 | Part | Where | What it does |
 |---|---|---|
-| Contract | `contracts/perennia` (Rust, near-sdk) | Holds USDC. Trader collateral, LP vault with shares, trades against signed quotes, margin for traders and for the vault, hourly funding, liquidation, pause |
+| Contract | `contracts/twooptions` (Rust, near-sdk) | Holds USDC. Trader collateral, LP vault with shares, trades against signed quotes, margin for traders and for the vault, hourly funding, liquidation, pause |
 | Agent | `agent/` (Python) | Prices the chain, signs quotes, posts spot, settles funding, scans for liquidations, serves the HTTP API |
 | App | `app/` (React, Vite) | Wallet login, deposit and withdraw, option chain, trade ticket, strategies, positions, funding, LP vault, cross-chain deposit through NEAR Intents |
 | Test USDC | `contracts/test-usdc` | Mintable 6-decimal token for testnet |
@@ -82,7 +82,7 @@ What each party can and cannot do. "Bounded" means the contract enforces a limit
 | **Owner** | Pause deposits and trading, set parameters within validated ranges, rotate agent keys, list series | Move user funds; block withdrawals, claims or liquidations by pausing |
 | **Anyone** | Liquidate an account below the liquidation ratio | Liquidate a healthy one |
 
-Controls, all in `contracts/perennia/src/lib.rs`:
+Controls, all in `contracts/twooptions/src/lib.rs`:
 
 - **Custody.** No method lets the owner or the agent transfer user funds. Withdrawals pay the caller only, debit before the transfer and refund in a callback if it fails.
 - **Signatures.** ed25519 over `sha256(domain || len(contract id) || contract id || borsh(message))`. The domain separates quote, spot and funding messages; the contract id stops a signature for one deployment being used on another.

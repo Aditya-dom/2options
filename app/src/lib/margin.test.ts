@@ -5,7 +5,7 @@ import {
   type Kind, type MarginParams, type Underlying,
 } from './margin';
 
-// Fixture produced by contracts/perennia/examples/margin_vectors.rs from the contract's own code.
+// Fixture produced by contracts/twooptions/examples/margin_vectors.rs from the contract's own code.
 type Case = (typeof vectors.cases)[number];
 
 const params = (c: Case): MarginParams => ({
@@ -15,7 +15,7 @@ const params = (c: Case): MarginParams => ({
   min_margin_per_contract: BigInt(c.params.min_margin_per_contract),
 });
 
-describe('margin parity with contracts/perennia', () => {
+describe('margin parity with contracts/twooptions', () => {
   test('fixture is non-trivial', () => {
     expect(vectors.cases.length).toBeGreaterThan(100);
     expect(vectors.cases.some(c => c.legs.some(l => l.size.startsWith('-')))).toBe(true);

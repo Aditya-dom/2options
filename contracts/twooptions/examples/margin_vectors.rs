@@ -1,13 +1,13 @@
 //! Emits test vectors from the contract's margin code so the frontend's TypeScript port
 //! (app/src/lib/margin.ts) can be checked for exact parity.
 //!
-//!   cd contracts/perennia
+//!   cd contracts/twooptions
 //!   cargo run --example margin_vectors > ../../app/src/lib/fixtures/margin_vectors.json
 
 use near_sdk::serde_json::{json, Value};
-use perennia::margin::*;
-use perennia::math::*;
-use perennia::types::{Kind, Params, Underlying};
+use twooptions::margin::*;
+use twooptions::math::*;
+use twooptions::types::{Kind, Params, Underlying};
 
 /// xorshift64*: deterministic, so the fixture is stable across runs.
 struct Rng(u64);
@@ -128,5 +128,5 @@ fn main() {
         })
         .collect();
 
-    println!("{}", json!({ "generator": "contracts/perennia/examples/margin_vectors.rs", "cases": cases, "rounding": rounding }));
+    println!("{}", json!({ "generator": "contracts/twooptions/examples/margin_vectors.rs", "cases": cases, "rounding": rounding }));
 }

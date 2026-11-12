@@ -1,4 +1,4 @@
-//! Perennia: an everlasting-options vault and settlement contract for NEAR.
+//! 2options: an everlasting-options vault and settlement contract for NEAR.
 //!
 //! The contract holds all USDC. Prices come from an off-chain agent that signs quotes, spot
 //! updates and funding updates with an ed25519 key registered here. The contract verifies
@@ -28,9 +28,9 @@ use near_sdk::{
 };
 use types::*;
 
-const QUOTE_DOMAIN: &[u8] = b"perennia:quote:v1";
-const SPOT_DOMAIN: &[u8] = b"perennia:spot:v1";
-const FUNDING_DOMAIN: &[u8] = b"perennia:funding:v1";
+const QUOTE_DOMAIN: &[u8] = b"twooptions:quote:v1";
+const SPOT_DOMAIN: &[u8] = b"twooptions:spot:v1";
+const FUNDING_DOMAIN: &[u8] = b"twooptions:funding:v1";
 
 const MAX_AGENT_KEYS: usize = 4;
 const MAX_SERIES: u32 = 32;
@@ -58,7 +58,7 @@ enum StorageKey {
 
 #[near(contract_state)]
 #[derive(PanicOnDefault)]
-pub struct Perennia {
+pub struct TwoOptions {
     owner_id: AccountId,
     pending_owner: Option<AccountId>,
     usdc: AccountId,
@@ -89,7 +89,7 @@ pub struct Perennia {
 }
 
 #[near]
-impl Perennia {
+impl TwoOptions {
     #[init]
     pub fn new(owner_id: AccountId, usdc: AccountId, agent_keys: Vec<PublicKey>) -> Self {
         let mut this = Self {
@@ -714,7 +714,7 @@ impl Perennia {
 // Internals
 // ---------------------------------------------------------------------------------------------
 
-impl Perennia {
+impl TwoOptions {
     fn assert_owner(&self) {
         require!(env::predecessor_account_id() == self.owner_id, "owner only");
     }
@@ -918,7 +918,7 @@ fn series_view(id: &str, s: &Series) -> SeriesView {
 fn emit(event: &str, data: serde_json::Value) {
     env::log_str(&format!(
         "EVENT_JSON:{}",
-        serde_json::json!({"standard": "perennia", "version": "1.0.0", "event": event, "data": [data]})
+        serde_json::json!({"standard": "twooptions", "version": "1.0.0", "event": event, "data": [data]})
     ));
 }
 

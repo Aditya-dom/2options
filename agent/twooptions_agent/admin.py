@@ -1,13 +1,13 @@
 """Owner-side setup for a testnet deployment (#18): everything HANDOFF_GAURAV.md section 1 asks for.
 
-    uv run python -m perennia_agent.admin keygen
-    uv run python -m perennia_agent.admin bootstrap --underlyings ETH     # the whole list below
-    uv run python -m perennia_agent.admin status
+    uv run python -m twooptions_agent.admin keygen
+    uv run python -m twooptions_agent.admin bootstrap --underlyings ETH     # the whole list below
+    uv run python -m twooptions_agent.admin status
 
 `bootstrap` runs these in order and skips whatever is already done, so it is safe to rerun:
 
     deploy-usdc      create `usdc.<owner>`, deploy the test token (testnet only)
-    deploy           create `perennia.<owner>`, deploy and call `new`
+    deploy           create `contract.<owner>`, deploy and call `new`
     set-params       apply PARAMS_PRESET (funding cap, price band, quote TTL)
     register         storage_deposit for the contract on the USDC token
     add-series       a strike grid around the live spot, calls and puts
@@ -37,7 +37,7 @@ from . import config, near, rpc
 from .spot import SpotFeed
 from .wire import Underlying
 
-log = logging.getLogger("perennia_admin")
+log = logging.getLogger("twooptions_admin")
 
 SEC = 1_000_000_000
 USDC = 10**6
@@ -303,7 +303,7 @@ def _keygen() -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Perennia testnet setup")
+    p = argparse.ArgumentParser(description="2options testnet setup")
     p.add_argument("--env-file", default=".env")
     sub = p.add_subparsers(dest="cmd", required=True)
     sub.add_parser("keygen", help="print a new ed25519 key pair")
@@ -311,7 +311,7 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("bootstrap", "deploy-usdc", "deploy", "set-params", "register", "add-series",
                  "seed-lp", "fund-keeper", "set-agent-keys", "mint", "upgrade", "upgrade-usdc"):  # fmt: skip
         s = sub.add_parser(name)
-        s.add_argument("--wasm", type=Path, default=_repo_wasm("perennia"))
+        s.add_argument("--wasm", type=Path, default=_repo_wasm("twooptions"))
         s.add_argument("--usdc-wasm", type=Path, default=_repo_wasm("test_usdc"))
         s.add_argument("--underlyings", default="ETH")
         s.add_argument("--width", type=int, default=2, help="strikes each side of the money")
@@ -334,7 +334,7 @@ def main(argv: list[str] | None = None) -> int:
     config.load_dotenv(Path(a.env_file))
     try:
         net = config.network()
-        usdc_id = config._need("PERENNIA_USDC_ID")
+        usdc_id = config._need("TWOOPTIONS_USDC_ID")
         owner = near.Account(
             net.rpc_url, config._need("OWNER_ACCOUNT_ID"), config._key("OWNER_PRIVATE_KEY")
         )
@@ -349,7 +349,7 @@ def main(argv: list[str] | None = None) -> int:
     is_test_token = usdc_id.endswith("." + owner.account_id)
     if a.cmd in FAUCET_COMMANDS and not (net.network == "testnet" and is_test_token):
         log.error(
-            "%s uses the test token's open faucet: testnet only, with PERENNIA_USDC_ID under the "
+            "%s uses the test token's open faucet: testnet only, with TWOOPTIONS_USDC_ID under the "
             "owner account",
             a.cmd,
         )

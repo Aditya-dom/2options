@@ -25,7 +25,7 @@ def post(rpc_url: str, payload: dict[str, Any], timeout: float, retries: int = 3
         rpc_url,
         data=json.dumps(payload).encode(),
         # Some providers refuse the default Python user agent.
-        headers={"Content-Type": "application/json", "User-Agent": "perennia-agent"},
+        headers={"Content-Type": "application/json", "User-Agent": "twooptions-agent"},
     )
     for attempt in range(retries + 1):
         try:
@@ -48,7 +48,7 @@ def view(
 ) -> Any:
     payload = {
         "jsonrpc": "2.0",
-        "id": "perennia-agent",
+        "id": "twooptions-agent",
         "method": "query",
         "params": {
             "request_type": "call_function",

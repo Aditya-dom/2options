@@ -1,8 +1,8 @@
 /**
- * In-browser stand-in for the perennia contract plus a simulated market, so every screen can be
+ * In-browser stand-in for the twooptions contract plus a simulated market, so every screen can be
  * built and demoed before the contract and agent are deployed.
  *
- * The state transitions mirror contracts/perennia/src/lib.rs step by step (same checks, same
+ * The state transitions mirror contracts/twooptions/src/lib.rs step by step (same checks, same
  * rounding via lib/margin.ts, same panic strings) except signature verification. Each call runs
  * on a copy of the state and commits only if it does not throw, like a NEAR transaction.
  * Funding settles every 2 minutes instead of hourly so it is visible in a demo.
@@ -22,7 +22,7 @@ import type { Backend, Call, CallResult } from './types';
 export const DEMO_ACCOUNT = 'you.demo';
 const SEED_LP = 'seed-lp.demo';
 const WHALE = 'whale.demo';
-const STORAGE_KEY = 'perennia-demo-v2';
+const STORAGE_KEY = 'twooptions-demo-v2';
 const SEC = 1_000_000_000n;
 
 const MIN_TRADE_SIZE = 1_000n;
@@ -527,7 +527,7 @@ export class DemoWorld {
 
 export class DemoBackend implements Backend {
   readonly mode = 'demo' as const;
-  readonly contractId = 'perennia.demo';
+  readonly contractId = 'twooptions.demo';
   readonly usdcId = 'usdc.demo';
 
   constructor(readonly world: DemoWorld) {}

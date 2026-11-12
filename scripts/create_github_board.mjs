@@ -17,7 +17,7 @@ const OWNER = REPO.split("/")[0];
 const GAURAV = process.env.GAURAV || OWNER;
 const ADITYA = process.env.ADITYA;
 const DRY = !!process.env.DRY_RUN;
-const PROJECT_TITLE = process.env.PROJECT_TITLE || "Perennia on NEAR";
+const PROJECT_TITLE = process.env.PROJECT_TITLE || "2options on NEAR";
 
 if (!ADITYA) {
   console.error("Set ADITYA to Aditya's GitHub username.");

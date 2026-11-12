@@ -1,11 +1,11 @@
-# Perennia contract
+# 2options contract
 
-Everlasting-options vault and settlement contract for NEAR. Source: [perennia/src](perennia/src).
+Everlasting-options vault and settlement contract for NEAR. Source: [twooptions/src](twooptions/src).
 
 ## Build and test
 
 ```bash
-cd contracts/perennia
+cd contracts/twooptions
 cargo test --lib                                                    # 71 unit tests
 cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
 cargo build --lib --target wasm32-unknown-unknown --release         # ~530 KB wasm
@@ -20,7 +20,7 @@ Notes:
 
 ## Deploying
 
-`make near-wasm` builds both contracts, and `make near-bootstrap` deploys and configures them on testnet (`agent/perennia_agent/admin.py`; steps in `agent/README.md`).
+`make near-wasm` builds both contracts, and `make near-bootstrap` deploys and configures them on testnet (`agent/twooptions_agent/admin.py`; steps in `agent/README.md`).
 
 **The wasm must be built with `--cfg near`.** `contracts/.cargo/config.toml` sets it for the wasm target, so a plain `cargo build` is correct; `cargo-near` sets it itself. Without the flag the contract still deploys and runs, but near-sdk does not route panics to the host, and every rejection reaches the caller as `WebAssembly trap: unreachable` instead of its message. This was found on testnet on Nov 12 and fixed by rebuilding and upgrading in place (`admin upgrade`, which keeps state).
 
@@ -63,9 +63,9 @@ signature = ed25519_sign(agent_secret_key, digest)        // 64 bytes, sent base
 
 | Message | Domain bytes | Struct |
 |---|---|---|
-| Quote | `perennia:quote:v1` | `Quote { series: String, taker: AccountId, side: Side, size: u128, price: u128, nonce: u64, expiry_ns: u64 }` |
-| Spot update | `perennia:spot:v1` | `SpotUpdate { underlying: Underlying, price: u128, ts_ns: u64, seq: u64 }` |
-| Funding update | `perennia:funding:v1` | `FundingUpdate { series: String, epoch: u64, rate: i128, mark: u128 }` |
+| Quote | `twooptions:quote:v1` | `Quote { series: String, taker: AccountId, side: Side, size: u128, price: u128, nonce: u64, expiry_ns: u64 }` |
+| Spot update | `twooptions:spot:v1` | `SpotUpdate { underlying: Underlying, price: u128, ts_ns: u64, seq: u64 }` |
+| Funding update | `twooptions:funding:v1` | `FundingUpdate { series: String, epoch: u64, rate: i128, mark: u128 }` |
 
 Borsh details: enums are a single `u8` variant index in declaration order (`Side`: Buy=0, Sell=1; `Underlying`: BTC=0, ETH=1, SOL=2, NEAR=3). `String` and `AccountId` are a `u32` little-endian length then UTF-8 bytes. `u128`/`i128` are 16 bytes little-endian.
 

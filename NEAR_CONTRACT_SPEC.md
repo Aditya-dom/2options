@@ -1,4 +1,4 @@
-# Perennia on NEAR: Contract Interface Spec (draft v0)
+# 2options on NEAR: Contract Interface Spec (draft v0)
 
 Covers board issues #4 (fixed-point scheme) and #7 (contract interface spec).
 Docs only. No contract code is written until the build window opens on Nov 1.
@@ -40,7 +40,7 @@ Largest intermediate: `1e12 (price) * 1e12 (size at 1e6 scale, 1M contracts) = 1
 
 - **Series (token) id** is a string: `"{UNDERLYING}-{STRIKE_USD}-{C|P}"`, for example `ETH-3500-C`. There is no expiry because the options are everlasting.
 - Underlyings for v1: `BTC`, `ETH`, `SOL`, `NEAR`.
-- Each series id is a NEP-245 `token_id` on `perennia.near`.
+- Each series id is a NEP-245 `token_id` on `twooptions.near`.
 - The **agent** is an ed25519 public key registered in the contract. Only quotes and funding updates signed by an active agent key are accepted.
 
 ---
@@ -48,7 +48,7 @@ Largest intermediate: `1e12 (price) * 1e12 (size at 1e6 scale, 1M contracts) = 1
 ## 3. Storage
 
 ```rust
-pub struct Perennia {
+pub struct 2options {
     owner: AccountId,                       // multisig or DAO later
     usdc: AccountId,                        // NEP-141 token contract
     agent_contract: Option<AccountId>,      // Shade Agent contract (optional in v1)
@@ -134,7 +134,7 @@ pub struct Quote {
 **Signed bytes** (domain separation prevents replay across contracts, networks, versions):
 
 ```
-msg = sha256( "perennia:quote:v1" || contract_account_id || borsh(Quote) )
+msg = sha256( "twooptions:quote:v1" || contract_account_id || borsh(Quote) )
 ```
 
 Verification: `env::ed25519_verify(&sig, &msg, &pubkey)` where `pubkey` must be in `agent_keys`.
@@ -150,7 +150,7 @@ pub struct FundingUpdate {
     spot: u128,              // 1e8
     delta: i128,             // vault net delta, informational
 }
-msg = sha256( "perennia:funding:v1" || contract_account_id || borsh(FundingUpdate) )
+msg = sha256( "twooptions:funding:v1" || contract_account_id || borsh(FundingUpdate) )
 ```
 
 ---
@@ -251,7 +251,7 @@ time_value_reserve = Σ over short positions of |size| * spot_usdc * tv_reserve_
 - `equity = collateral + Σ size * (last_mark - avg_price) / 1e6` (mark-to-market, funding already settled).
 - **Passes** when `equity >= requirement`.
 
-Intrinsic-only shocks ignore time value, so a short option whose price is mostly time value looks cheaper to hold than it is. The reserve covers that gap. **OPEN** (question 3): calibrate the shocks and `tv_reserve_bps` against the Rust 12-scenario model in `perennia_math/` by backtesting before Nov 5.
+Intrinsic-only shocks ignore time value, so a short option whose price is mostly time value looks cheaper to hold than it is. The reserve covers that gap. **OPEN** (question 3): calibrate the shocks and `tv_reserve_bps` against the Rust 12-scenario model in `the earlier Rust math kernel/` by backtesting before Nov 5.
 
 ---
 
@@ -270,7 +270,7 @@ Liquidation closes all positions at `last_mark`, pays the liquidator `liquidatio
 
 ---
 
-## 9. Events (NEP-297, `standard = "perennia"`, `version = "1.0.0"`)
+## 9. Events (NEP-297, `standard = "twooptions"`, `version = "1.0.0"`)
 
 `Deposit{account, amount}`, `Withdraw{account, amount}`, `LpMint{account, amount, shares}`, `LpRedeemRequest{account, shares}`, `LpClaim{account, amount}`, `Trade{taker, series, side, size, price, nonce}`, `FundingSettled{series, epoch, rate, mark, index}`, `FundingApplied{account, series, amount}`, `Liquidation{account, series, closed_notional, reward, shortfall}`, `SeriesAdded{series}`, `AgentKeySet{pubkey, active}`, `OracleUpdated{underlying, price, ts}`. Plus the standard `mt_mint`, `mt_burn`, `mt_transfer` events.
 
@@ -298,7 +298,7 @@ Liquidation closes all positions at `last_mark`, pays the liquidator `liquidatio
 | 2 | Spot: trust the agent's signed `spot`, or require a cached oracle value? | Cache via permissionless `poke_oracle`, require the quote `spot` within 1% of it. Costs one extra keeper call every ~10 s. |
 | 3 | Margin calibration: how closely must on-chain margin match the 12-scenario Rust model? | Backtest the 4-shock version against it. If worse than 10% off, add two vol scenarios. |
 | 4 | Exact definition of the tier ratio (equity over requirement vs. equity over notional). | Equity over requirement as in section 8. Revisit after backtest. |
-| 5 | Who owns `perennia.near`: your account, or a multisig? | Your account for the hackathon, noted in the README as a trust assumption. |
+| 5 | Who owns `twooptions.near`: your account, or a multisig? | Your account for the hackathon, noted in the README as a trust assumption. |
 | 6 | Collateral token: native USDC on NEAR only, or accept any token through Intents? | USDC only in the contract. Intents swaps into USDC before it arrives. |
 | 7 | Do shorts transfer? | Allow, with the receiver margin check. If it complicates tests, disable short transfers in v1. |
-| 8 | Reuse of the Perennia pricing math (organizer question, issue #2). | Disclose as prior work, or rewrite. Not needed in the contract either way, since pricing is off-chain. |
+| 8 | Reuse of the 2options pricing math (organizer question, issue #2). | Disclose as prior work, or rewrite. Not needed in the contract either way, since pricing is off-chain. |

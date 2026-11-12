@@ -199,7 +199,7 @@ class TxError(RpcError):
 
 
 def _call(rpc_url: str, method: str, params: Any, timeout: float) -> Any:
-    payload = {"jsonrpc": "2.0", "id": "perennia-agent", "method": method, "params": params}
+    payload = {"jsonrpc": "2.0", "id": "twooptions-agent", "method": method, "params": params}
     body = post(rpc_url, payload, timeout)
     if "error" in body:
         raise RpcError(f"{method}: {json.dumps(body['error'])[:400]}")

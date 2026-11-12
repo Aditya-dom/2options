@@ -1,7 +1,7 @@
 import pytest
 
-from perennia_agent import admin
-from perennia_agent.pricing import everlasting
+from twooptions_agent import admin
+from twooptions_agent.pricing import everlasting
 
 from .fakes import PARAMS
 

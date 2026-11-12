@@ -10,8 +10,8 @@ Contract rules mirrored here (lib.rs post_spot): price > 0, `seq` strictly incre
 not before the previous post, and a move of more than `max_spot_jump_bps` is refused while the
 previous post is younger than 300 s.
 
-    uv run python -m perennia_agent.spot --once            # one round, JSON lines
-    uv run python -m perennia_agent.spot --interval 5       # loop
+    uv run python -m twooptions_agent.spot --once            # one round, JSON lines
+    uv run python -m twooptions_agent.spot --interval 5       # loop
 """
 
 from __future__ import annotations
@@ -128,7 +128,9 @@ def aggregate(
 def _get(url: str, body: dict[str, object] | None = None) -> object:
     data = json.dumps(body).encode() if body is not None else None
     req = urllib.request.Request(
-        url, data=data, headers={"Content-Type": "application/json", "User-Agent": "perennia-agent"}
+        url,
+        data=data,
+        headers={"Content-Type": "application/json", "User-Agent": "twooptions-agent"},
     )
     with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:  # noqa: S310 - fixed https URLs
         return json.loads(r.read())

@@ -71,7 +71,7 @@ def network() -> Network:
     return Network(
         net,
         os.environ.get("NEAR_RPC_URL", "").strip() or rpc.DEFAULT_RPC[net],
-        _need("PERENNIA_CONTRACT_ID"),
+        _need("TWOOPTIONS_CONTRACT_ID"),
     )
 
 
@@ -89,23 +89,23 @@ def keeper_account(net: Network) -> near.Account | None:
 def quoter_config() -> QuoterConfig:
     vols = dict(pricing.DEFAULT_ATM_VOL)
     for u in Underlying:
-        vols[u] = _float(f"PERENNIA_VOL_{u.name}", vols[u])
+        vols[u] = _float(f"TWOOPTIONS_VOL_{u.name}", vols[u])
         if not 0.05 <= vols[u] <= 3.0:
-            raise ConfigError(f"PERENNIA_VOL_{u.name} must be between 0.05 and 3.0")
-    fraction = _float("PERENNIA_FUNDING_FRACTION", pricing.DEFAULT_FUNDING_FRACTION)
+            raise ConfigError(f"TWOOPTIONS_VOL_{u.name} must be between 0.05 and 3.0")
+    fraction = _float("TWOOPTIONS_FUNDING_FRACTION", pricing.DEFAULT_FUNDING_FRACTION)
     if not 0 < fraction < 1:
-        raise ConfigError("PERENNIA_FUNDING_FRACTION must be between 0 and 1")
+        raise ConfigError("TWOOPTIONS_FUNDING_FRACTION must be between 0 and 1")
     return QuoterConfig(
         funding_fraction=fraction,
-        quote_ttl_s=_float("PERENNIA_QUOTE_TTL_S", 30.0),
+        quote_ttl_s=_float("TWOOPTIONS_QUOTE_TTL_S", 30.0),
         atm_vol=vols,
     )
 
 
 def cors_origins() -> list[str]:
-    raw = os.environ.get("PERENNIA_CORS_ORIGINS", "http://localhost:3001")
+    raw = os.environ.get("TWOOPTIONS_CORS_ORIGINS", "http://localhost:3001")
     return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
 
 
 def data_dir() -> Path:
-    return Path(os.environ.get("PERENNIA_DATA_DIR", "").strip() or "data")
+    return Path(os.environ.get("TWOOPTIONS_DATA_DIR", "").strip() or "data")

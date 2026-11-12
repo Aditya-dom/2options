@@ -11,8 +11,8 @@
 Numbers follow the contract's JSON rules: every 64/128-bit integer is a decimal string.
 Errors are non-200 with `{"error": "..."}`.
 
-    uv run python -m perennia_agent.server            # quote server + keeper
-    uv run python -m perennia_agent.server --no-keeper
+    uv run python -m twooptions_agent.server            # quote server + keeper
+    uv run python -m twooptions_agent.server --no-keeper
 
 Standard library only: one thread per request, which is plenty for an RFQ desk and keeps the
 image that runs inside the TEE small.
@@ -41,7 +41,7 @@ from .spot import SpotFeed
 from .store import Store
 from .wire import Side
 
-log = logging.getLogger("perennia_agent")
+log = logging.getLogger("twooptions_agent")
 
 MAX_HISTORY = 500
 
@@ -181,7 +181,7 @@ def _int_param(q: dict[str, str], name: str, default: int, lo: int, hi: int) -> 
 
 def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
-        server_version = "perennia-agent"
+        server_version = "twooptions-agent"
 
         def _send(self, status: int, body: Any) -> None:
             data = json.dumps(body, separators=(",", ":")).encode()
@@ -238,8 +238,8 @@ def build_app(with_keeper: bool) -> App:
         store=store,
         keeper=keeper,
         cors=config.cors_origins(),
-        code_hash=os.environ.get("PERENNIA_CODE_HASH", "").strip(),
-        tee_quote_url=os.environ.get("PERENNIA_TEE_QUOTE_URL", "").strip(),
+        code_hash=os.environ.get("TWOOPTIONS_CODE_HASH", "").strip(),
+        tee_quote_url=os.environ.get("TWOOPTIONS_TEE_QUOTE_URL", "").strip(),
     )
 
 
@@ -254,7 +254,7 @@ def _warm(cache: ChainCache, stop: threading.Event) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    p = argparse.ArgumentParser(description="Perennia agent: quote server and keeper")
+    p = argparse.ArgumentParser(description="2options agent: quote server and keeper")
     p.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
     p.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8787")))
     p.add_argument("--no-keeper", action="store_true", help="serve quotes only")
@@ -276,7 +276,7 @@ def main(argv: list[str] | None = None) -> int:
     if not registered:
         log.error(
             "agent key %s is not registered on %s; the contract will reject every signature. "
-            "Run `python -m perennia_agent.admin set-agent-keys`.",
+            "Run `python -m twooptions_agent.admin set-agent-keys`.",
             near.public_key_str(app.quoter.key),
             app.contract_id,
         )

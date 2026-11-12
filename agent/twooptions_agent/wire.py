@@ -1,4 +1,4 @@
-"""Wire format for agent-signed messages, matching contracts/perennia (README "Wire format").
+"""Wire format for agent-signed messages, matching contracts/twooptions (README "Wire format").
 
     digest    = sha256(domain || u32_le(len(contract_id)) || contract_id || borsh(message))
     signature = ed25519_sign(agent_secret_key, digest), sent base64
@@ -6,7 +6,7 @@
 Borsh: enums are one u8 in declaration order; strings are u32-LE length + UTF-8; u64/u128/i128
 are little-endian. JSON carries every 64/128-bit integer as a decimal string.
 
-Checked byte for byte, signature included, against contracts/perennia/examples/wire_vectors.rs,
+Checked byte for byte, signature included, against contracts/twooptions/examples/wire_vectors.rs,
 which also runs the signatures through post_spot and settle_funding on a real contract.
 """
 
@@ -19,9 +19,9 @@ from enum import IntEnum
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-QUOTE_DOMAIN = b"perennia:quote:v1"
-SPOT_DOMAIN = b"perennia:spot:v1"
-FUNDING_DOMAIN = b"perennia:funding:v1"
+QUOTE_DOMAIN = b"twooptions:quote:v1"
+SPOT_DOMAIN = b"twooptions:spot:v1"
+FUNDING_DOMAIN = b"twooptions:funding:v1"
 
 U64_MAX = 2**64 - 1
 U128_MAX = 2**128 - 1

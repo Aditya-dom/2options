@@ -1,4 +1,4 @@
-# Perennia on NEAR — Hackathon Plan
+# 2options on NEAR — Hackathon Plan
 
 > **Everlasting options, deposited from any chain, priced and hedged by a verifiable AI agent running in secure hardware (TEE), with settlement on a NEAR smart contract.**
 
@@ -35,13 +35,13 @@
 
 The hackathon rules say: **"Projects must be built during the hackathon period."**
 
-Perennia already exists as a Solana/Pacifica project (it was a Pacifica hackathon entry). Submitting a port of it risks disqualification, and the AI judges will read the git history.
+2options already exists as a Solana/Pacifica project (it was a Pacifica hackathon entry). Submitting a port of it risks disqualification, and the AI judges will read the git history.
 
 **Plan:**
 
 - [ ] Ask the organizers before Oct 31 whether you can extend an existing project.
 - [ ] Create a **fresh public repo on Nov 1**. Don't import the old git history.
-- [ ] Treat the pricing math (`core/`, `perennia_math/`) as **disclosed prior work** in the README, or rewrite it in the new repo.
+- [ ] Treat the pricing math (`core/` and the Rust math kernel) as **disclosed prior work** in the README, or rewrite it in the new repo.
 - [ ] Before Nov 1, do only research, accounts and design. No repo code.
 
 ---
@@ -50,7 +50,7 @@ Perennia already exists as a Solana/Pacifica project (it was a Pacifica hackatho
 
 ```mermaid
 flowchart LR
-    subgraph Today["Perennia today (Solana / Pacifica)"]
+    subgraph Today["2options today (Solana / Pacifica)"]
         U[User<br/>Phantom / Privy] -->|USDP SPL transfer| CW[Per-user Privy<br/>custodial wallet]
         CW -.->|backend credits| PG[(Postgres<br/>ENTIRE options book,<br/>balances, funding)]
         API[FastAPI + engines] --> PG
@@ -62,14 +62,14 @@ flowchart LR
 
 | Layer | Size | Status | Reuse on NEAR |
 |---|---|---|---|
-| `core/` + `perennia_math/` (Rust) | ~1.8k Python, ~2.1k Rust | Real, pure math: BS, 50-term everlasting series, vol surface, 12-scenario margin model | **High.** The Rust kernel compiles to wasm once pyo3 and rayon are behind a feature flag |
+| `core/` + the Rust math kernel | ~1.8k Python, ~2.1k Rust | Real, pure math: BS, 50-term everlasting series, vol surface, 12-scenario margin model | **High.** The Rust kernel compiles to wasm once pyo3 and rayon are behind a feature flag |
 | `engine/` | ~5.6k | Real loops for quotes, risk, orders, funding, hedging | **High.** The hedge engine is tied to Pacifica through only 3 calls |
 | `api/` + `db/` | ~5.6k | Real, but **all settlement is off-chain** | Partial. The read APIs stay; custody moves on-chain |
 | `exchange/` | ~2.9k | Pacifica + Solana + Privy specific | **Replace** |
 | Frontend | ~8k TS | Real chain, order, strategy and payoff UI | Components stay; the wallet layer is replaced |
 | Smart contracts | none | — | **Build new** |
 
-**The weakness to fix:** today Perennia is a centralized exchange with a crypto deposit address. The NEAR version moves trust from the server to **the chain and verifiable hardware**.
+**The weakness to fix:** today 2options is a centralized exchange with a crypto deposit address. The NEAR version moves trust from the server to **the chain and verifiable hardware**.
 
 ---
 
@@ -108,14 +108,14 @@ flowchart TB
 
     subgraph NEAR["NEAR Protocol"]
         direction TB
-        PC["<b>perennia.near</b><br/>Vault (USDC NEP-141)<br/>LP shares (pUSDC)<br/>Options (NEP-245)<br/>Margin + Funding + Liquidation"]
-        AC["<b>agent.perennia.near</b><br/>Shade Agent contract<br/>approved TEE code hashes<br/>signing guardrails"]
+        PC["<b>twooptions.near</b><br/>Vault (USDC NEP-141)<br/>LP shares (pUSDC)<br/>Options (NEP-245)<br/>Margin + Funding + Liquidation"]
+        AC["<b>agent.twooptions.near</b><br/>Shade Agent contract<br/>approved TEE code hashes<br/>signing guardrails"]
         MPC["<b>v1.signer</b><br/>Chain Signatures (MPC)"]
         ORA["Price oracle<br/>(Pyth on NEAR)"]
     end
 
     subgraph TEE["TEE (Phala / dstack)"]
-        AG["<b>Perennia Agent</b><br/>quote engine · risk engine<br/>funding keeper · hedge engine"]
+        AG["<b>2options Agent</b><br/>quote engine · risk engine<br/>funding keeper · hedge engine"]
     end
 
     subgraph Hedge["Hedge venue"]
@@ -172,11 +172,11 @@ flowchart LR
 ### 4.3 Repository layout (new repo)
 
 ```
-perennia-near/
+twooptions/
 ├── contracts/
-│   ├── perennia/          # main vault + options + margin contract (Rust, near-sdk)
+│   ├── 2options/          # main vault + options + margin contract (Rust, near-sdk)
 │   ├── agent/             # Shade Agent contract (attestation + chain-sig gate)
-│   └── math/              # no_std fixed-point port of perennia_math
+│   └── math/              # no_std fixed-point port of the earlier Rust math kernel
 ├── agent/                 # off-chain engine (Python or TS) running inside the TEE
 │   ├── pricing/           # everlasting pricing, vol surface
 │   ├── quoter/            # RFQ server: signs quotes
@@ -201,7 +201,7 @@ sequenceDiagram
     participant OC as 1Click API
     participant SRC as Source chain (e.g. Solana)
     participant USDC as usdc.near (NEP-141)
-    participant P as perennia.near
+    participant P as twooptions.near
 
     U->>FE: "Deposit 2 SOL"
     FE->>OC: POST /v0/quote (SOL → USDC on NEAR, recipient = P, msg = user)
@@ -222,8 +222,8 @@ sequenceDiagram
     actor U as Trader
     participant FE as Frontend
     participant AG as Agent (TEE)
-    participant P as perennia.near
-    participant AC as agent.perennia.near
+    participant P as twooptions.near
+    participant AC as agent.twooptions.near
 
     U->>FE: Buy 1 ETH-3500-C everlasting
     FE->>AG: GET /quote?series=ETH-3500-C&side=buy&size=1
@@ -247,7 +247,7 @@ sequenceDiagram
     autonumber
     participant K as Keeper (Agent or anyone)
     participant AG as Agent (TEE)
-    participant P as perennia.near
+    participant P as twooptions.near
 
     loop every hour
         AG->>AG: compute mark TWAP per series
@@ -266,7 +266,7 @@ sequenceDiagram
 sequenceDiagram
     autonumber
     participant AG as Agent (TEE)
-    participant AC as agent.perennia.near
+    participant AC as agent.twooptions.near
     participant MPC as v1.signer (MPC)
     participant HL as Hyperliquid
 
@@ -302,11 +302,11 @@ flowchart LR
 
 ## 6. Smart contract design
 
-### 6.1 `perennia.near` storage
+### 6.1 `twooptions.near` storage
 
 ```mermaid
 classDiagram
-    class Perennia {
+    class 2options {
         owner: AccountId
         usdc: AccountId
         agent_contract: AccountId
@@ -336,9 +336,9 @@ classDiagram
         total_shares: u128  (pUSDC)
         net_delta: i128
     }
-    Perennia --> Account
-    Perennia --> Series
-    Perennia --> Vault
+    2options --> Account
+    2options --> Series
+    2options --> Vault
 ```
 
 ### 6.2 Public methods
@@ -358,7 +358,7 @@ classDiagram
 ### 6.3 Contract math rules
 
 - **Money:** all `u128`/`i128` fixed-point (USDC 6 decimals; prices 1e8). The old code used floats for money; don't repeat that.
-- **On-chain margin:** a simplified SPAN with ±15% spot × 3 vol scenarios, ported from `perennia_math`. Cap positions per account at **16** to keep gas bounded.
+- **On-chain margin:** a simplified SPAN with ±15% spot × 3 vol scenarios, ported from the earlier Rust math kernel. Cap positions per account at **16** to keep gas bounded.
 - **On-chain pricing:** none. The contract only checks that the quoted price is inside an **oracle-derived band** (intrinsic value ≤ price ≤ intrinsic + spot × k).
 
 ---
@@ -367,7 +367,7 @@ classDiagram
 
 ```mermaid
 flowchart LR
-    subgraph Agent["Perennia Agent (inside TEE)"]
+    subgraph Agent["2options Agent (inside TEE)"]
         F1[Spot feed<br/>Pyth / Binance WS] --> VS[Vol surface<br/>EWMA + Deribit IV]
         VS --> QE[Quote engine<br/>everlasting 50-term]
         QE --> RFQ[RFQ server<br/>ed25519 signer]
@@ -378,13 +378,13 @@ flowchart LR
         HE --> CS[Chain-sig client]
     end
     RFQ -->|HTTPS| FE[Frontend]
-    KP -->|NEAR tx| P[perennia.near]
-    CS -->|request_signature| AC[agent.perennia.near]
+    KP -->|NEAR tx| P[twooptions.near]
+    CS -->|request_signature| AC[agent.twooptions.near]
 ```
 
 Porting map from the old codebase:
 
-| Old (Perennia) | New (agent) | Effort |
+| Old (2options) | New (agent) | Effort |
 |---|---|---|
 | `core/everlasting.py`, `black_scholes.py`, `vol_surface.py` | `agent/pricing/` | Low (rewrite or disclose) |
 | `engine/quote_engine.py` | `agent/quoter/` + signing | Medium |
@@ -435,7 +435,7 @@ flowchart TB
 
 ```mermaid
 gantt
-    title Perennia on NEAR, build plan
+    title 2options on NEAR, build plan
     dateFormat  YYYY-MM-DD
     axisFormat  %b %d
 

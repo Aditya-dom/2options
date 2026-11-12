@@ -1,6 +1,6 @@
 /**
  * Emits NEAR transaction encoding vectors from @near-js/transactions, so the Python agent's
- * own encoder (agent/perennia_agent/near.py) can be checked byte for byte.
+ * own encoder (agent/twooptions_agent/near.py) can be checked byte for byte.
  *
  *   cd app && bun scripts/near_tx_vectors.ts > ../agent/tests/fixtures/near_tx_vectors.json
  */
@@ -15,7 +15,7 @@ const seed = new Uint8Array(32).map((_, i) => i + 1);
 const pub = ed25519.getPublicKey(seed);
 const publicKey = PublicKey.fromString(`ed25519:${base58.encode(pub)}`);
 const otherKey = PublicKey.fromString(`ed25519:${base58.encode(ed25519.getPublicKey(new Uint8Array(32).fill(7)))}`);
-const blockHash = sha256(new TextEncoder().encode('perennia block hash'));
+const blockHash = sha256(new TextEncoder().encode('twooptions block hash'));
 const json = (o: unknown) => new TextEncoder().encode(JSON.stringify(o));
 
 const { functionCall, deployContract, createAccount, transfer, addKey, fullAccessKey } = actionCreators;
@@ -24,19 +24,19 @@ const spotArgs = { update: { underlying: 'ETH', price: '211012345678', ts_ns: '1
 const cases = [
   {
     name: 'function_call',
-    signer_id: 'keeper.testnet', receiver_id: 'perennia.testnet', nonce: '87654321000001',
+    signer_id: 'keeper.testnet', receiver_id: 'twooptions.testnet', nonce: '87654321000001',
     actions: [{ type: 'FunctionCall', method: 'post_spot', args: spotArgs, gas: '30000000000000', deposit: '0' }],
     build: () => [functionCall('post_spot', json(spotArgs), 30_000_000_000_000n, 0n)],
   },
   {
     name: 'function_call_with_deposit',
     signer_id: 'owner.testnet', receiver_id: 'usdc.owner.testnet', nonce: '5',
-    actions: [{ type: 'FunctionCall', method: 'ft_transfer_call', args: { receiver_id: 'perennia.testnet', amount: '1000000000', msg: 'lp' }, gas: '100000000000000', deposit: '1' }],
-    build: () => [functionCall('ft_transfer_call', json({ receiver_id: 'perennia.testnet', amount: '1000000000', msg: 'lp' }), 100_000_000_000_000n, 1n)],
+    actions: [{ type: 'FunctionCall', method: 'ft_transfer_call', args: { receiver_id: 'twooptions.testnet', amount: '1000000000', msg: 'lp' }, gas: '100000000000000', deposit: '1' }],
+    build: () => [functionCall('ft_transfer_call', json({ receiver_id: 'twooptions.testnet', amount: '1000000000', msg: 'lp' }), 100_000_000_000_000n, 1n)],
   },
   {
     name: 'create_subaccount_and_deploy',
-    signer_id: 'owner.testnet', receiver_id: 'perennia.owner.testnet', nonce: '18446744073709551615',
+    signer_id: 'owner.testnet', receiver_id: 'twooptions.owner.testnet', nonce: '18446744073709551615',
     actions: [
       { type: 'CreateAccount' },
       { type: 'Transfer', deposit: '6000000000000000000000000' },

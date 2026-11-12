@@ -36,7 +36,7 @@ export type ThemeMode = 'light' | 'dark';
 export const useThemeStore = create<{ mode: ThemeMode; toggle: () => void }>()(
   persist(
     set => ({ mode: 'light', toggle: () => set(s => ({ mode: s.mode === 'light' ? 'dark' : 'light' })) }),
-    { name: 'perennia-theme-v2' },
+    { name: 'twooptions-theme-v2' },
   ),
 );
 

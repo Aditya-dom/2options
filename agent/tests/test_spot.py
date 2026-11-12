@@ -1,7 +1,7 @@
 from decimal import Decimal
 
-from perennia_agent.spot import FeedConfig, SpotFeed, VenueQuote, aggregate, to_spot_units
-from perennia_agent.wire import SpotUpdate, Underlying
+from twooptions_agent.spot import FeedConfig, SpotFeed, VenueQuote, aggregate, to_spot_units
+from twooptions_agent.wire import SpotUpdate, Underlying
 
 ETH = Underlying.ETH
 NOW = 1_794_268_800 * 10**9

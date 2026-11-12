@@ -140,7 +140,7 @@ export function readOutcome(outcome: FinalExecutionOutcome | void): CallResult {
       if (!log.startsWith('EVENT_JSON:')) continue;
       try {
         const ev = JSON.parse(log.slice('EVENT_JSON:'.length));
-        if (ev.standard === 'perennia') events.push(ev.event);
+        if (ev.standard === 'twooptions') events.push(ev.event);
       } catch { /* not ours */ }
     }
   }

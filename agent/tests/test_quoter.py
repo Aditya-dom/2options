@@ -3,10 +3,10 @@ import base64
 import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
-from perennia_agent import margin, pricing, wire
-from perennia_agent.chain import fetch_snapshot
-from perennia_agent.quoter import QuoteError, Quoter, QuoterConfig
-from perennia_agent.wire import Side, Underlying
+from twooptions_agent import margin, pricing, wire
+from twooptions_agent.chain import fetch_snapshot
+from twooptions_agent.quoter import QuoteError, Quoter, QuoterConfig
+from twooptions_agent.wire import Side, Underlying
 
 from .fakes import CONTRACT, SEC, FakeChain
 

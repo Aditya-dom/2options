@@ -1,5 +1,5 @@
 [workspace]
-members = ["perennia", "test-usdc"]
+members = ["twooptions", "test-usdc"]
 resolver = "3"
 
 [profile.release]

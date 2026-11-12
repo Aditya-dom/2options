@@ -5,7 +5,7 @@
  *   signature = ed25519(agent key, digest)
  *
  * Tested against agent/tests/fixtures/wire_vectors.json, generated from the contract's own types
- * (contracts/perennia/examples/wire_vectors.rs). The contract re-checks every signature; this
+ * (contracts/twooptions/examples/wire_vectors.rs). The contract re-checks every signature; this
  * lets the UI show that a quote really comes from the registered agent before the user signs.
  */
 
@@ -14,9 +14,9 @@ import { sha256 } from '@noble/hashes/sha256';
 import { base58 } from '@scure/base';
 import type { QuoteJson } from './contract';
 
-export const QUOTE_DOMAIN = 'perennia:quote:v1';
-export const SPOT_DOMAIN = 'perennia:spot:v1';
-export const FUNDING_DOMAIN = 'perennia:funding:v1';
+export const QUOTE_DOMAIN = 'twooptions:quote:v1';
+export const SPOT_DOMAIN = 'twooptions:spot:v1';
+export const FUNDING_DOMAIN = 'twooptions:funding:v1';
 
 const UNDERLYING_INDEX: Record<string, number> = { BTC: 0, ETH: 1, SOL: 2, NEAR: 3 };
 const SIDE_INDEX: Record<string, number> = { Buy: 0, Sell: 1 };

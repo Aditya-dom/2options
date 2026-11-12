@@ -12,7 +12,7 @@ from . import rpc
 from .margin import MarginParams
 from .wire import Underlying
 
-#: `view(method, args)` against the perennia contract.
+#: `view(method, args)` against the twooptions contract.
 Viewer = Callable[[str, dict[str, Any] | None], Any]
 
 NS = 1_000_000_000

@@ -55,7 +55,6 @@ pgdata/
 archive/
 
 # Rust / maturin build artifacts
-perennia_math/target/
 *.so
 *.whl
 .claude/

@@ -14,7 +14,7 @@ fn acct(name: &str) -> AccountId {
 }
 
 struct Harness {
-    c: Perennia,
+    c: TwoOptions,
     agent: SigningKey,
     now: u64,
     nonce: u64,
@@ -23,7 +23,7 @@ struct Harness {
 
 fn ctx(predecessor: &str, now: u64) -> near_sdk::VMContext {
     VMContextBuilder::new()
-        .current_account_id(acct("perennia.near"))
+        .current_account_id(acct("twooptions.near"))
         .predecessor_account_id(acct(predecessor))
         .signer_account_id(acct(predecessor))
         .block_timestamp(now)
@@ -35,7 +35,7 @@ impl Harness {
         let agent = SigningKey::from_bytes(&[7u8; 32]);
         let pk = PublicKey::from_parts(CurveType::ED25519, agent.verifying_key().to_bytes().to_vec()).unwrap();
         testing_env!(ctx("owner.near", T0));
-        let mut c = Perennia::new(acct("owner.near"), acct("usdc.near"), vec![pk]);
+        let mut c = TwoOptions::new(acct("owner.near"), acct("usdc.near"), vec![pk]);
         c.add_series(Underlying::ETH, U128(3_500 * USD as u128), Kind::Call);
         c.add_series(Underlying::ETH, U128(3_500 * USD as u128), Kind::Put);
         c.add_series(Underlying::ETH, U128(4_000 * USD as u128), Kind::Call);
@@ -51,7 +51,7 @@ impl Harness {
     }
 
     fn digest<T: BorshSerialize>(&self, domain: &[u8], msg: &T) -> Vec<u8> {
-        let me = "perennia.near";
+        let me = "twooptions.near";
         let mut bytes = domain.to_vec();
         bytes.extend_from_slice(&(me.len() as u32).to_le_bytes());
         bytes.extend_from_slice(me.as_bytes());
@@ -684,7 +684,7 @@ fn failed_transfer_refunds_collateral() {
     h.as_user("alice.near");
     let _ = h.c.withdraw(U128(4_000 * USDC));
     testing_env!(
-        ctx("perennia.near", h.now),
+        ctx("twooptions.near", h.now),
         near_sdk::test_vm_config(),
         near_sdk::RuntimeFeesConfig::test(),
         Default::default(),
@@ -846,7 +846,7 @@ const TOUCHED: [&str; 4] = ["alice.near", "bob.near", "carol.near", "keeper.near
 const SERIES_IDS: [&str; 3] = ["ETH-3500-C", "ETH-3500-P", "ETH-4000-C"];
 
 impl Snapshot {
-    fn take(c: &Perennia) -> Self {
+    fn take(c: &TwoOptions) -> Self {
         Snapshot {
             vault_cash: c.vault_cash,
             insurance: c.insurance,
@@ -861,7 +861,7 @@ impl Snapshot {
         }
     }
 
-    fn restore(self, c: &mut Perennia) {
+    fn restore(self, c: &mut TwoOptions) {
         c.vault_cash = self.vault_cash;
         c.insurance = self.insurance;
         c.lp_pending_total = self.lp_pending_total;

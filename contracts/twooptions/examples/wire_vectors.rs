@@ -1,9 +1,9 @@
 //! Emits wire-format test vectors (borsh bytes, digest, ed25519 signature) for agent-signed
 //! messages, and proves the contract accepts the signatures by running `post_spot` and
-//! `settle_funding` on a real `Perennia` instance. Lets an off-chain signer in any language
+//! `settle_funding` on a real `TwoOptions` instance. Lets an off-chain signer in any language
 //! check its encoding byte for byte (agent/tests/test_wire.py).
 //!
-//!   cd contracts/perennia
+//!   cd contracts/twooptions
 //!   cargo run --example wire_vectors > ../../agent/tests/fixtures/wire_vectors.json
 
 use ed25519_dalek::{Signer, SigningKey};
@@ -13,10 +13,10 @@ use near_sdk::serde::Serialize;
 use near_sdk::serde_json::{self, json, Value};
 use near_sdk::test_utils::VMContextBuilder;
 use near_sdk::{env, testing_env, AccountId, CurveType, PublicKey};
-use perennia::types::{FundingUpdate, Kind, Quote, Side, SpotUpdate, Underlying};
-use perennia::Perennia;
+use twooptions::types::{FundingUpdate, Kind, Quote, Side, SpotUpdate, Underlying};
+use twooptions::TwoOptions;
 
-const CONTRACT: &str = "perennia.testnet";
+const CONTRACT: &str = "twooptions.testnet";
 const SEC: u64 = 1_000_000_000;
 /// 2026-11-10T00:00:00Z, the start of funding epoch 498408.
 const T0: u64 = 1_794_268_800 * SEC;
@@ -62,7 +62,7 @@ fn main() {
     let pk = PublicKey::from_parts(CurveType::ED25519, key.verifying_key().to_bytes().to_vec()).unwrap();
     testing_env!(ctx(T0));
     let owner: AccountId = "owner.testnet".parse().unwrap();
-    let mut c = Perennia::new(owner.clone(), "usdc.fakes.testnet".parse().unwrap(), vec![pk.clone()]);
+    let mut c = TwoOptions::new(owner.clone(), "usdc.fakes.testnet".parse().unwrap(), vec![pk.clone()]);
     testing_env!(VMContextBuilder::new().current_account_id(CONTRACT.parse().unwrap()).predecessor_account_id(owner).block_timestamp(T0).build());
     c.add_series(Underlying::ETH, U128(2_100 * 100_000_000), Kind::Call);
 
@@ -74,7 +74,7 @@ fn main() {
         SpotUpdate { underlying: Underlying::NEAR, price: U128(362_645_000), ts_ns: U64(T0 + 2 * SEC), seq: U64(7) },
     ];
     for s in &spots {
-        let (v, sig) = vector("spot", b"perennia:spot:v1", s, &key);
+        let (v, sig) = vector("spot", b"twooptions:spot:v1", s, &key);
         testing_env!(ctx(s.ts_ns.0 + SEC));
         c.post_spot(s.clone(), sig); // panics if the signature or encoding were wrong
         vectors.push(v);
@@ -85,11 +85,11 @@ fn main() {
         FundingUpdate { series: "ETH-2100-C".into(), epoch: U64(498_409), rate: I128(-12_345_678), mark: U128(6_900_001) },
     ];
     for (i, f) in fundings.iter().enumerate() {
-        let (v, sig) = vector("funding", b"perennia:funding:v1", f, &key);
+        let (v, sig) = vector("funding", b"twooptions:funding:v1", f, &key);
         let now = T0 + (i as u64) * 3_600 * SEC + 20 * SEC;
         // Keep the spot fresh for the band check, then settle.
         let s = SpotUpdate { underlying: Underlying::ETH, price: U128(210_000_000_000), ts_ns: U64(now - SEC), seq: U64(2_000_000_000_000 + i as u64) };
-        let (_, ssig) = vector("spot", b"perennia:spot:v1", &s, &key);
+        let (_, ssig) = vector("spot", b"twooptions:spot:v1", &s, &key);
         testing_env!(ctx(now));
         c.post_spot(s, ssig);
         c.settle_funding(f.clone(), sig);
@@ -103,11 +103,11 @@ fn main() {
     for q in &quotes {
         // trade() needs a funded account and vault, so quotes are checked byte for byte only; the
         // digest and signature path is the same verify_agent_signature that post_spot exercises.
-        vectors.push(vector("quote", b"perennia:quote:v1", q, &key).0);
+        vectors.push(vector("quote", b"twooptions:quote:v1", q, &key).0);
     }
 
     println!("{}", json!({
-        "generator": "contracts/perennia/examples/wire_vectors.rs",
+        "generator": "contracts/twooptions/examples/wire_vectors.rs",
         "contract_id": CONTRACT,
         "agent_secret_key_hex": hex(&[7u8; 32]),
         "agent_public_key": serde_json::to_value(&pk).unwrap(),

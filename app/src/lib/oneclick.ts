@@ -5,13 +5,13 @@
  * then adds its own fee, e.g. 20 bps on SOL→USDC, 1 bp on Base USDC→USDC); CORS allows any
  * origin; mainnet only (no testnet chains). Delivery goes to the user's own NEAR account and
  * the app then deposits with ft_transfer_call. `customRecipientMsg` (ft_transfer_call straight
- * into perennia) is not used: the contract credits `sender_id`, which would be the intents
+ * into twooptions) is not used: the contract credits `sender_id`, which would be the intents
  * contract, not the user.
  */
 
 const BASE = 'https://1click.chaindefuser.com/v0';
 
-/** Native USDC on NEAR mainnet: what 1Click delivers and what a mainnet perennia should accept. */
+/** Native USDC on NEAR mainnet: what 1Click delivers and what a mainnet twooptions should accept. */
 export const NEAR_USDC_MAINNET = '17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1';
 export const NEAR_USDC_ASSET = `nep141:${NEAR_USDC_MAINNET}`;
 
@@ -158,7 +158,7 @@ export interface PendingSwap {
   deliveredAmount?: string;
 }
 
-const PENDING_KEY = 'perennia-1click-pending';
+const PENDING_KEY = 'twooptions-1click-pending';
 
 export function loadPending(account: string): PendingSwap | null {
   try {

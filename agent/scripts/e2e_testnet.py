@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from perennia_agent import config, near, rpc  # noqa: E402
+from twooptions_agent import config, near, rpc  # noqa: E402
 
 AGENT = os.environ.get("AGENT_URL", "http://127.0.0.1:8787")
 USDC = 10**6
@@ -49,7 +49,7 @@ def main() -> int:
     me = sys.argv[1]
     config.load_dotenv(Path(__file__).resolve().parents[1] / ".env")
     net = config.network()
-    contract, token = net.contract_id, os.environ["PERENNIA_USDC_ID"]
+    contract, token = net.contract_id, os.environ["TWOOPTIONS_USDC_ID"]
     cred = json.loads((Path.home() / ".near-credentials" / "testnet" / f"{me}.json").read_text())
     acct = near.Account(net.rpc_url, me, near.parse_secret_key(cred["private_key"]))
     # Public RPCs are load-balanced: a view right after a transaction can hit a node that has
