@@ -60,7 +60,7 @@ export function Button({ children, onClick, variant = 'primary', disabled, style
 }) {
   const { t } = useTheme();
   const palette: Record<Variant, { fg: string; bg: string; border: string }> = {
-    primary: { fg: t.ACCENT, bg: t.ACCENT_BG, border: t.ACCENT },
+    primary: { fg: t.PRIMARY_FG, bg: t.PRIMARY_BG, border: t.PRIMARY_BORDER },
     buy: { fg: t.GREEN, bg: t.GREEN_BG, border: t.GREEN },
     sell: { fg: t.RED, bg: t.RED_BG, border: t.RED },
     ghost: { fg: t.GRAY, bg: 'transparent', border: t.BORDER },

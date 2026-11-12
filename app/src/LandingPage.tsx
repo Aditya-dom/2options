@@ -6,7 +6,12 @@ import { useThemeStore } from './theme';
 
 
 /* ── Constants ── */
-const CYAN = '#00e5ff';
+/* Accent per theme: NEAR green on white (light), cyan on black (dark). `text` must read on the
+   page background; `fill` carries `ink` on top of it. */
+const ACCENTS = {
+  light: { text:'#117a45', fill:'#78f0a0', ink:'#172325', art:'47,179,106' },
+  dark:  { text:'#00e5ff', fill:'#00e5ff', ink:'#000',    art:'0,229,255' },
+};
 const SERIF = "'DM Serif Display', Georgia, serif";
 const BODY = "'Outfit', system-ui, sans-serif";
 const MONO = "'JetBrains Mono', monospace";
@@ -19,7 +24,7 @@ type Theme = {
 };
 
 const LIGHT: Theme = {
-  bg:'#faf8f3', ink:'#000', text:'#000', muted:'#000', dim:'#000', ghost:'#000',
+  bg:'#fff', ink:'#000', text:'#000', muted:'#000', dim:'#000', ghost:'#000',
   border:'#000', bannerBg:'#000', bannerText:'#fff', artBase:'0,0,0',
   grain:0.018, partnerGhost:'#000', footerDim:'#000',
 };
@@ -176,8 +181,9 @@ export default function LandingPage() {
   const { mode, toggle } = useThemeStore();
 
   const t = mode === 'light' ? LIGHT : DARK;
+  const acc = ACCENTS[mode];
   const artInk: CF = (o) => `rgba(${t.artBase},${o})`;
-  const artCyan: CF = (o) => `rgba(0,229,255,${o})`;
+  const artCyan: CF = (o) => `rgba(${acc.art},${o})`;
 
   return (
     <div style={{ background:t.bg, minHeight:'100vh', fontFamily:BODY, color:t.text, transition:'background 0.4s, color 0.4s' }}>
@@ -253,7 +259,9 @@ export default function LandingPage() {
             <FadeIn>
               <h1 style={{ fontFamily:SERIF, fontSize:'clamp(34px,5.8vw,62px)', fontWeight:400, letterSpacing:'-0.015em', lineHeight:1.12, margin:'0 0 22px', color:t.ink, transition:'color 0.4s' }}>
                 The Everlasting
-                <br/><span style={{ color:CYAN }}>Options</span> Protocol
+                <br/><span style={mode === 'light'
+                  ? { background:`linear-gradient(transparent 56%, ${acc.fill} 56%, ${acc.fill} 92%, transparent 92%)`, padding:'0 6px' }
+                  : { color:acc.text }}>Options</span> Protocol
               </h1>
             </FadeIn>
             <FadeIn delay={80}>
@@ -284,7 +292,7 @@ export default function LandingPage() {
         {/* PROTOCOL */}
         <section style={{ padding:'72px 40px', textAlign:'center' }}>
           <FadeIn>
-            <span style={{ fontFamily:MONO, fontSize:10, color:CYAN, letterSpacing:'0.22em', display:'block', marginBottom:18 }}>2Options</span>
+            <span style={{ fontFamily:MONO, fontSize:10, color:acc.text, letterSpacing:'0.22em', display:'block', marginBottom:18 }}>2Options</span>
             <p style={{ fontFamily:SERIF, fontSize:'clamp(15px,1.7vw,18px)', fontWeight:400, fontStyle:'italic', color:t.muted, lineHeight:1.85, margin:'0 auto 32px', maxWidth:520, transition:'color 0.4s' }}>
               Everlasting options give traders long-term options exposure without the effort, risk, or expense of rolling positions.
             </p>
@@ -369,12 +377,12 @@ export default function LandingPage() {
         @keyframes fF { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-5px)} }
         @keyframes fP { 0%,100%{transform:scale(1)} 50%{transform:scale(1.04)} }
         @keyframes fS { 0%,100%{transform:rotate(0)} 25%{transform:rotate(2.5deg)} 75%{transform:rotate(-2.5deg)} }
-        .nav-link:hover { color:${CYAN} !important; }
-        .launch-btn:hover { background:${CYAN} !important; color:#000 !important; border-color:${CYAN} !important; }
-        .theme-tog:hover { border-color:${CYAN} !important; color:${CYAN} !important; }
-        .cta-btn:hover { background:${CYAN} !important; color:#000 !important; }
-        .partner:hover { color:${CYAN} !important; }
-        .f-link:hover { color:${CYAN} !important; }
+        .nav-link:hover { color:${acc.text} !important; }
+        .launch-btn:hover { background:${acc.fill} !important; color:${acc.ink} !important; border-color:${acc.fill} !important; }
+        .theme-tog:hover { border-color:${acc.text} !important; color:${acc.text} !important; }
+        .cta-btn:hover { background:${acc.fill} !important; color:${acc.ink} !important; }
+        .partner:hover { color:${acc.text} !important; }
+        .f-link:hover { color:${acc.text} !important; }
         @media(max-width:640px) {
           .lp-nav .nav-link { display:none; }
           .feat-grid { grid-template-columns:1fr !important; }

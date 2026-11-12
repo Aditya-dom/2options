@@ -71,7 +71,7 @@ export default function Splitter({ dir, onDelta, onReset, label }: {
       style={{
         [dir === 'h' ? 'width' : 'height']: 6, flexShrink: 0, zIndex: 12, touchAction: 'none', outline: 'none',
         cursor: dir === 'h' ? 'ew-resize' : 'ns-resize', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: on ? 'rgba(0,229,255,0.12)' : 'transparent', transition: 'background 0.12s',
+        background: on ? t.ACCENT_BG : 'transparent', transition: 'background 0.12s',
       }}
     >
       <div style={{

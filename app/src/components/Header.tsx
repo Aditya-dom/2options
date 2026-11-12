@@ -30,9 +30,9 @@ export default function Header({ tab }: { tab: Tab }) {
             return (
               <a key={x.id} href={href(x.id)} aria-current={active ? 'page' : undefined} style={{
                 display: 'flex', alignItems: 'center', padding: '0 14px', fontFamily: t.MONO, fontSize: 11, letterSpacing: '0.08em',
-                color: active ? t.ACCENT : t.GRAY, textDecoration: 'none', flexShrink: 0, borderRight: `1px solid ${t.LINE}`,
-                background: active ? 'linear-gradient(180deg, rgba(0,229,255,0.18), rgba(0,229,255,0.07))' : 'transparent',
-                boxShadow: active ? 'inset 0 -2px 0 rgba(0,229,255,0.72)' : 'none',
+                color: active ? t.ACTIVE_FG : t.GRAY, fontWeight: active ? 600 : 400, textDecoration: 'none', flexShrink: 0, borderRight: `1px solid ${t.LINE}`,
+                background: active ? t.ACTIVE_BG : 'transparent',
+                boxShadow: active ? `inset 0 -2px 0 ${t.ACTIVE_LINE}` : 'none',
               }}>{x.label}</a>
             );
           })}
@@ -62,8 +62,8 @@ export default function Header({ tab }: { tab: Tab }) {
           ) : (
             <button onClick={signIn} disabled={!ready} style={{
               fontFamily: t.MONO, fontSize: 11, fontWeight: 600, letterSpacing: '0.06em', padding: '5px 14px', borderRadius: 3,
-              cursor: ready ? 'pointer' : 'default', background: 'rgba(0,229,255,0.08)', color: ready ? t.ACCENT : t.DIM,
-              border: `1px solid ${ready ? 'rgba(0,229,255,0.3)' : t.BORDER}`,
+              cursor: ready ? 'pointer' : 'default', background: ready ? t.PRIMARY_BG : 'transparent', color: ready ? t.PRIMARY_FG : t.DIM,
+              border: `1px solid ${ready ? t.PRIMARY_BORDER : t.BORDER}`,
             }}>
               {!ready ? 'Loading…' : isDemo ? 'Use Demo Account' : 'Connect Wallet'}
             </button>

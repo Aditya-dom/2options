@@ -15,19 +15,29 @@ const DARK = {
   SANS: "'Outfit', system-ui, sans-serif",
   /** Hard rule between panels: white on dark, black on light. */
   LINE: '#fff',
+  /** Brand fill and the ink that sits on it (active tab, primary buttons). */
+  BRAND: '#00e5ff', BRAND_INK: '#000',
+  ACTIVE_BG: 'linear-gradient(180deg, rgba(0,229,255,0.18), rgba(0,229,255,0.07))',
+  ACTIVE_FG: '#00e5ff', ACTIVE_LINE: 'rgba(0,229,255,0.72)',
+  PRIMARY_FG: '#00e5ff', PRIMARY_BG: 'rgba(0,229,255,0.12)', PRIMARY_BORDER: '#00e5ff',
 };
 
 const LIGHT: typeof DARK = {
   BG: '#fff', SURFACE: '#fff', PANEL: '#fff',
   BORDER: '#d0cdc5', BORDER2: '#c0bdb5', MUTED: '#fafafa',
   WHITE: '#111', GRAY: '#555', DIM: '#888',
-  ACCENT: '#00a0b8', ACCENT_DIM: '#e0f5fa', ACCENT_BG: 'rgba(0,160,184,0.08)',
+  // NEAR green: the mint (#78f0a0) is a fill with dark ink on it; text and lines on white use a
+  // darker shade of the same green (5.4:1 on white), since the mint itself is 1.4:1.
+  ACCENT: '#117a45', ACCENT_DIM: '#e8fcef', ACCENT_BG: 'rgba(120,240,160,0.22)',
   GREEN: '#00956a', GREEN_DIM: '#d5f2e8', GREEN_BG: 'rgba(0,149,106,0.08)',
   RED: '#c8304a', RED_DIM: '#fce0e5', RED_BG: 'rgba(200,48,74,0.08)',
   ORANGE: '#c08000', YELLOW: '#a88800', PURPLE: '#6e6ac8',
   MONO: DARK.MONO,
   SANS: DARK.SANS,
   LINE: '#000',
+  BRAND: '#78f0a0', BRAND_INK: '#172325',
+  ACTIVE_BG: '#78f0a0', ACTIVE_FG: '#172325', ACTIVE_LINE: '#172325',
+  PRIMARY_FG: '#172325', PRIMARY_BG: '#78f0a0', PRIMARY_BORDER: '#3fc97a',
 };
 
 export type ThemeTokens = typeof DARK;
