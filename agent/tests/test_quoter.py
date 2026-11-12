@@ -271,3 +271,24 @@ def test_the_hourly_outflow_cap_counts_what_the_vault_already_paid(chain: FakeCh
         "alice.testnet",
         chain.now_ns,
     )
+
+
+def test_quotes_stop_once_the_spot_is_past_half_its_allowed_age(chain: FakeChain) -> None:
+    # The contract checks the spot when the trade lands, after the user confirms in the wallet.
+    # A spot already halfway to stale means the keeper is behind, so no firm quote is given;
+    # the chain view still shows indicative prices.
+    q = quoter()
+    chain.set_spot("ETH", 2_110, age_s=14)
+    q.quote(
+        fetch_snapshot(chain.view, chain.now_ns),
+        "ETH-2100-C",
+        Side.Buy,
+        ONE,
+        "alice.testnet",
+        chain.now_ns,
+    )
+    chain.set_spot("ETH", 2_110, age_s=16)
+    snap = fetch_snapshot(chain.view, chain.now_ns)
+    assert len(q.rows(snap, chain.now_ns)) == len(chain.series)
+    with pytest.raises(QuoteError, match="stale"):
+        q.quote(snap, "ETH-2100-C", Side.Buy, ONE, "alice.testnet", chain.now_ns)

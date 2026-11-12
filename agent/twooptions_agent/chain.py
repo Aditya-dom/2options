@@ -118,10 +118,11 @@ class Snapshot:
     epoch_net_outflow: int = 0
     epoch_start_cash: int = 0
 
-    def fresh_spot(self, u: Underlying, now_ns: int) -> int | None:
-        """The spot the contract would accept right now, or None if it would call it stale."""
+    def fresh_spot(self, u: Underlying, now_ns: int, headroom_ns: int = 0) -> int | None:
+        """The spot the contract would accept right now, or None if it would call it stale.
+        With `headroom_ns`, None unless it stays acceptable for that much longer."""
         sp = self.spots.get(u)
-        if sp is None or now_ns - sp.ts_ns > self.params.max_spot_age_ns:
+        if sp is None or now_ns - sp.ts_ns > self.params.max_spot_age_ns - headroom_ns:
             return None
         return sp.price
 

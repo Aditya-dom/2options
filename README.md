@@ -132,12 +132,12 @@ Then set `VITE_CONTRACT_ID`, `VITE_USDC_ID` and `VITE_AGENT_URL` in `app/.env`.
 |---|---|
 | Contract | Deployed on testnet. 77 unit tests, clippy clean. No sandbox tests, no gas numbers. Unaudited |
 | Test USDC | Deployed on testnet. 9 unit tests (faucet limit, owner-only mint, migration) |
-| Agent: pricing, quotes, keeper, API | Running against testnet: posts spot every 5 s, settles funding hourly, signs quotes. 113 unit tests |
-| End to end | `agent/scripts/e2e_testnet.py`: 27 checks with real transactions (deposit, trades, rejected replays and forgeries, two-leg batch, withdraw, LP deposit and redeem, close-out, solvency) |
+| Agent: pricing, quotes, keeper, API | Running against testnet: posts spot every 5 s, settles funding hourly, signs quotes. Fails over between RPC endpoints. 126 unit tests |
+| End to end | `agent/scripts/e2e_testnet.py`: 33 checks with real transactions (32 while the test account's daily faucet claim is cooling down), all passing on Nov 13 (faucet and its daily limit, deposit, trades, rejected replays and forgeries, a validly signed price far from the funding mark, two-leg batch, withdraw, LP deposit and redeem, close-out, solvency) |
 | Wire format | Byte-for-byte parity between the contract, the agent and the app, signatures included |
 | Margin | The app's and the agent's ports match the contract on a 2,697-case generated fixture |
 | NEAR transactions | The agent's own encoder matches `@near-js/transactions` byte for byte |
-| App | 38 tests, type-checks and builds. Demo mode works end to end; testnet mode reads the live contract. The wallet flow has had limited manual testing |
+| App | 51 tests, type-checks and builds. Demo mode works end to end. On testnet: wallet sign-in, faucet, deposit, trading without a wallet popup (a limited key), withdraw and LP deposit and redeem have been used by hand |
 | Liquidation, LP claim | Unit-tested. Not exercised on testnet (they need a price move and a one-hour cooldown) |
 | Cross-chain deposit | Live 1Click quotes; delivery is mainnet only |
 | TEE (Shade Agent), hedging, NEP-245 position tokens | Not built |

@@ -8,6 +8,17 @@ Open `near-board.html` in a browser for the full issue board. Your issues are th
 
 ---
 
+## Update, Nov 13: deployed and running
+
+This section wins over everything below, including the Nov 11 update. The README's **Status** table is the current state.
+
+- **Deployed on testnet:** `contract.twooptions.testnet` (owner and keeper `twooptions.testnet`) and test USDC `usdc.twooptions.testnet`, 13 strikes from 1,700 to 2,300, calls and puts. The wasm is built with `--cfg near` (`contracts/.cargo/config.toml`), so contract panics show their message.
+- **Test USDC:** `mint` is now owner only. Anyone gets 2,000 USDC a day from `faucet()`; the app has the button.
+- **Keeper:** settles funding at the current mark (not an hourly average); the contract anchors the next hour's trade prices to it. Price posts no longer wait for execution, and RPC endpoints fail over.
+- **App:** trades, withdrawals and LP redeem and claim are signed by a limited key the app adds at the first trade, so they need no wallet popup.
+- **Verified:** `agent/scripts/e2e_testnet.py`, 33 of 33 checks on Nov 13.
+- **Still not done:** public hosting for the app and the agent (both run locally), the demo video, liquidation on testnet, TEE, hedging.
+
 ## Update, Nov 11: reply to HANDOFF_GAURAV.md
 
 The original handoff below is unchanged; where it says something is not built, this section wins. Nothing here is deployed yet. All of it is in the working tree, tested locally, not against a live network.

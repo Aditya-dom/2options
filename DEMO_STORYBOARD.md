@@ -4,8 +4,8 @@ Three minutes, recorded Nov 13 after the freeze, submitted Nov 14 with the X pos
 
 ## Before recording
 
-- [ ] 2Options deployed to testnet; USDC registered; series listed **around live spot** (ETH is about $2,110, not $3,500)
-- [ ] Keeper posting `post_spot` every ≤10 s and `settle_funding` hourly; LP vault seeded
+- [x] 2Options deployed to testnet; USDC registered; series listed **around live spot** (ETH is about $2,110, not $3,500)
+- [x] Keeper posting `post_spot` every ≤10 s and `settle_funding` hourly; LP vault seeded
 - [ ] Agent live at `VITE_AGENT_URL` with `/attestation`; the header badge shows `AGENT ✓`
 - [ ] Two funded testnet accounts: one trader with test USDC, one LP
 - [ ] The trader holds one position opened at least an hour earlier, so there is funding to show

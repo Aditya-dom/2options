@@ -56,9 +56,11 @@ def main() -> int:
     # not seen it yet. Give every write a moment before the checks read it back.
     send_now = acct.send
 
-    def send_and_settle(receiver_id: str, actions: list[near.Action]) -> near.TxResult:
+    def send_and_settle(
+        receiver_id: str, actions: list[near.Action], wait: str = "EXECUTED_OPTIMISTIC"
+    ) -> near.TxResult:
         try:
-            return send_now(receiver_id, actions)
+            return send_now(receiver_id, actions, wait)
         finally:
             time.sleep(2.0)
 

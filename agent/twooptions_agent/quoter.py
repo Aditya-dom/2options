@@ -197,7 +197,9 @@ class Quoter:
             raise QuoteError(404, "unknown series")
         if not s.active:
             raise QuoteError(409, "series is not active")
-        spot = snap.fresh_spot(s.underlying, now)
+        # A spot past half its allowed age means the keeper is behind: by the time the user has
+        # confirmed in the wallet, the contract would likely refuse it as stale.
+        spot = snap.fresh_spot(s.underlying, now, snap.params.max_spot_age_ns // 2)
         if spot is None:
             raise QuoteError(503, "spot price is stale")
 

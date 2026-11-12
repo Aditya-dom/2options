@@ -18,7 +18,7 @@ from typing import Any
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 
-from .rpc import RpcError, post
+from .rpc import RpcError, TransportError, post
 
 TGAS = 10**12
 YOCTO_PER_NEAR = 10**24
@@ -227,11 +227,20 @@ class Account:
     """One NEAR account and one of its access keys. Not thread-safe: use one per sender thread,
     because access-key nonces must go up one at a time."""
 
-    def __init__(self, rpc_url: str, account_id: str, key: Ed25519PrivateKey, timeout: float = 30):
-        self.rpc_url = rpc_url
+    def __init__(
+        self,
+        rpc_url: str,
+        account_id: str,
+        key: Ed25519PrivateKey,
+        timeout: float = 30,
+        recovery_s: float = 8.0,
+    ):
+        self.rpc_url = rpc_url  # one endpoint or several, comma separated (rpc.endpoints)
         self.account_id = account_id
         self.key = key
         self.timeout = timeout
+        #: After a send that timed out, how long to keep asking for the outcome before giving up.
+        self.recovery_s = recovery_s
         self._nonce: int | None = None
 
     @property
@@ -254,13 +263,15 @@ class Account:
             raise RpcError(f"access key for {self.account_id}: {r['error']}")
         return int(r["nonce"]), b58decode(r["block_hash"])
 
-    def _submit(self, signed: bytes, tx_hash: str) -> Any:
-        """Send and wait until every receipt has executed, so a contract panic comes back here.
+    def _submit(self, signed: bytes, tx_hash: str, wait: str) -> Any:
+        """Send and wait until `wait` (EXECUTED_OPTIMISTIC: every receipt has run, so a contract
+        panic comes back here).
 
-        Some providers answer HTTP 408 when that wait outlasts their own limit. The transaction
-        is usually already on its way, so ask for its outcome instead of reporting a failure.
+        Some providers answer HTTP 408 or time out when that wait outlasts their own limit. The
+        transaction is usually already on its way, so ask for its outcome for up to `recovery_s`
+        instead of reporting a failure. The bound matters: the keeper posts nothing else while
+        it waits here.
         """
-        wait = "EXECUTED_OPTIMISTIC"
         try:
             return _call(
                 self.rpc_url,
@@ -268,36 +279,44 @@ class Account:
                 {"signed_tx_base64": base64.b64encode(signed).decode(), "wait_until": wait},
                 self.timeout,
             )
+        except TransportError:
+            pass
         except RpcError as e:
-            if "HTTP 408" not in str(e):
+            # The node itself gave up waiting (JSON-RPC TIMEOUT_ERROR): same as an HTTP timeout.
+            if "TIMEOUT_ERROR" not in str(e):
                 raise
         last: Exception | None = None
-        for _ in range(6):
+        deadline = time.monotonic() + self.recovery_s
+        while time.monotonic() < deadline:
             time.sleep(1.0)
             try:
                 return _call(
                     self.rpc_url,
                     "tx",
                     {"tx_hash": tx_hash, "sender_account_id": self.account_id, "wait_until": wait},
-                    self.timeout,
+                    min(self.timeout, 5.0),
                 )
             except RpcError as e:  # not known yet, or still waiting
                 last = e
         raise RpcError(f"{tx_hash}: no outcome after a timeout ({last})")
 
-    def send(self, receiver_id: str, actions: list[Action]) -> TxResult:
+    def send(
+        self, receiver_id: str, actions: list[Action], wait: str = "EXECUTED_OPTIMISTIC"
+    ) -> TxResult:
+        """Sign and send. With `wait="INCLUDED"` it returns once the transaction is in a block,
+        without its outcome: no logs, no return value, and a contract panic is not seen."""
         chain_nonce, block_hash = self._access_key()
         nonce = max(chain_nonce, self._nonce or 0) + 1
         tx = encode_transaction(
             self.account_id, public_key_bytes(self.key), nonce, receiver_id, block_hash, actions
         )
         signed, tx_hash = sign_transaction(self.key, tx)
-        try:
-            r = self._submit(signed, tx_hash)
-        except Exception:
-            self._nonce = None  # unknown whether it landed; re-read the nonce next time
-            raise
+        # Never reuse this nonce, whether or not the transaction lands: gaps are allowed, and a
+        # reused nonce fails if the first one did land (possibly after its send timed out).
         self._nonce = nonce
+        r = self._submit(signed, tx_hash, wait)
+        if wait not in ("EXECUTED_OPTIMISTIC", "EXECUTED", "FINAL"):
+            return TxResult(tx_hash, [], None)
         logs = [
             line
             for o in r.get("receipts_outcome", [])
@@ -325,5 +344,6 @@ class Account:
         args: dict[str, Any] | None = None,
         gas: int = 30 * TGAS,
         deposit: int = 0,
+        wait: str = "EXECUTED_OPTIMISTIC",
     ) -> TxResult:
-        return self.send(receiver_id, [FunctionCall(method, args or {}, gas, deposit)])
+        return self.send(receiver_id, [FunctionCall(method, args or {}, gas, deposit)], wait)

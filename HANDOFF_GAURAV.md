@@ -2,6 +2,8 @@
 
 From Aditya, Nov 10, 2026 (final update for today). This replies to `HANDOFF_ADITYA.md`. Everything is on branch `aditya/near-frontend`, in **PR #46**. The new `near` CI workflow passes there: contract, app and agent.
 
+> **Nov 13:** this note predates the testnet deployment. Everything in §1 is done and running; see "Update, Nov 13" in `HANDOFF_ADITYA.md` and the README's **Status** table.
+
 ## Where my issues stand
 
 | Issue | Board | State |

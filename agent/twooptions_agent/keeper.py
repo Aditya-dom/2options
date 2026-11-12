@@ -43,6 +43,7 @@ class Sender(Protocol):
         args: dict[str, Any] | None = None,
         gas: int = ...,
         deposit: int = ...,
+        wait: str = ...,
     ) -> TxResult: ...
 
 
@@ -50,9 +51,14 @@ class Sender(Protocol):
 class KeeperConfig:
     spot_interval_s: float = 5.0
     funding_check_s: float = 3.0
-    #: Settlements per pass. Each one is a transaction of about 2 s and the spot must be posted
-    #: every few seconds, so a backlog is worked off a little at a time between spot posts.
-    funding_per_pass: int = 2
+    #: Settlements per pass. Each one is a transaction of about 2 s (longer when the RPC is slow)
+    #: and the spot must be posted every few seconds, so a backlog is worked off one settlement
+    #: at a time between spot posts.
+    funding_per_pass: int = 1
+    #: Resync the feed when the chain's spot is this many spot intervals older than the last
+    #: post sent: posts go out without waiting for their outcome, so a refused one is only
+    #: visible this way.
+    resync_after_intervals: float = 4.0
     liquidation_interval_s: float = 15.0
     #: Wait this long into a new epoch before settling it, so a slightly fast local clock cannot
     #: name an epoch the chain has not reached ("epoch is not current").
@@ -100,6 +106,9 @@ class Keeper:
         self.status = KeeperStatus()
         self._seeded = False
         self._warned_no_account = False
+        #: Series whose last settlement attempt failed, by epoch: tried after the others, so a
+        #: series that keeps failing cannot hold the rest back.
+        self._funding_failed: dict[str, int] = {}
 
     # -- spot ---------------------------------------------------------------------------------
 
@@ -117,6 +126,20 @@ class Keeper:
         if not wanted:
             return
         self.feed.underlyings = wanted
+        interval_ns = int(self.cfg.spot_interval_s * NS)
+        for u, sp in snap.spots.items():
+            sent = self.status.last_spot_post_ns.get(u.name)
+            if (
+                self._seeded
+                and sent
+                and sent - sp.ts_ns > self.cfg.resync_after_intervals * interval_ns
+            ):
+                log.warning(
+                    "spot %s: the chain holds a price %.0f s older than the last post; resyncing",
+                    u.name,
+                    (sent - sp.ts_ns) / NS,
+                )
+                self._seeded = False
         if not self._seeded:
             self._seed_feed(snap)
         posted = False
@@ -127,6 +150,8 @@ class Keeper:
                 log.warning("spot %s held: %s", name, d.hold)
                 continue
             try:
+                # Return once the transaction is in a block rather than waiting for it to run:
+                # a slow RPC then delays one post by a second or two, not the whole feed.
                 self.sender.call(
                     self.contract_id,
                     "post_spot",
@@ -134,6 +159,7 @@ class Keeper:
                         "update": d.update.to_json(),
                         "signature": wire.sign(self.agent_key, self.contract_id, d.update),
                     },
+                    wait="INCLUDED",
                 )
             except Exception:
                 # The feed recorded this update as posted; put it back in step with the chain.
@@ -158,9 +184,9 @@ class Keeper:
         rows = {r.series: r for r in self.quoter.rows(snap, now)}
         first_error: Exception | None = None
         sent = 0
-        for s in snap.series.values():
-            if s.last_epoch >= epoch:
-                continue
+        due = [s for s in snap.series.values() if s.last_epoch < epoch]
+        due.sort(key=lambda s: self._funding_failed.get(s.id, -1) == epoch)
+        for s in due:
             if sent >= self.cfg.funding_per_pass:
                 break  # the rest on the next pass, after the spot job has had its turn
             row = rows.get(s.id)
@@ -190,8 +216,10 @@ class Keeper:
                 )
             except Exception as e:  # one series failing must not block the rest
                 log.error("funding %s epoch %d failed: %s", s.id, epoch, e)
+                self._funding_failed[s.id] = epoch
                 first_error = first_error or e
                 continue
+            self._funding_failed.pop(s.id, None)
             per_contract = margin.mul_div_floor(rate, mark, 10**9)
             self.status.last_funding_epoch[s.id] = epoch
             self.store.add_funding(

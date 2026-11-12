@@ -80,6 +80,12 @@ class FakeChain:
     epoch_net_out: int = 0
     epoch_start_cash: int = 0
     fail_next: str | None = None
+    waits: list[tuple[str, str]] = field(default_factory=list)
+    #: settle_funding always fails for these series.
+    fail_series: set[str] = field(default_factory=set)
+    #: This many post_spot calls are accepted by the RPC but change nothing, as when a post sent
+    #: without waiting for its outcome is refused on chain.
+    drop_spot_posts: int = 0
 
     def add_series(self, *ids: str) -> None:
         for sid in ids:
@@ -132,12 +138,18 @@ class FakeChain:
         args: dict[str, Any] | None = None,
         gas: int = 0,
         deposit: int = 0,
+        wait: str = "EXECUTED_OPTIMISTIC",
     ) -> TxResult:
         assert receiver_id == CONTRACT
+        self.waits.append((method, wait))
         a = args or {}
         if self.fail_next:
             msg, self.fail_next = self.fail_next, None
             raise TxError(msg)
+        if method == "post_spot" and self.drop_spot_posts > 0:
+            self.drop_spot_posts -= 1
+            self.calls.append((method, a))
+            return TxResult(f"tx{len(self.calls)}", [], None)
         if method == "post_spot":
             u = wire.SpotUpdate.from_json(a["update"])
             self._verify(u, a["signature"])
@@ -157,6 +169,8 @@ class FakeChain:
             self._verify(f, a["signature"])
             now_epoch = self.now_ns // self.params["funding_interval_ns"]
             if not (f.epoch <= now_epoch and f.epoch + 1 >= now_epoch):
+                raise TxError("epoch is not current")
+            if f.series in self.fail_series:
                 raise TxError("epoch is not current")
             s = self.series[f.series]
             if f.epoch <= int(s["last_epoch"]):

@@ -83,7 +83,15 @@ def keeper_account(net: Network) -> near.Account | None:
     """The account that pays gas for post_spot, settle_funding and liquidate, if configured."""
     if not os.environ.get("KEEPER_ACCOUNT_ID", "").strip():
         return None
-    return near.Account(net.rpc_url, _need("KEEPER_ACCOUNT_ID"), _key("KEEPER_PRIVATE_KEY"))
+    # Tight timeouts: while one transaction hangs, the keeper posts no spot, and the contract
+    # refuses trades once the spot is 30 s old.
+    return near.Account(
+        net.rpc_url,
+        _need("KEEPER_ACCOUNT_ID"),
+        _key("KEEPER_PRIVATE_KEY"),
+        timeout=10.0,
+        recovery_s=6.0,
+    )
 
 
 def quoter_config() -> QuoterConfig:

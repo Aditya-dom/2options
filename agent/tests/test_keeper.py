@@ -87,6 +87,7 @@ def test_funding_waits_for_the_settle_delay_then_settles_each_series_once(rig: R
 
     rig.advance(20)
     rig.chain.set_spot("ETH", 2_110)
+    rig.keeper.tick_funding(rig.chain.now_ns)  # one settlement per pass
     rig.keeper.tick_funding(rig.chain.now_ns)
     epoch = rig.chain.now_ns // HOUR
     assert [m for m, _ in rig.chain.calls] == ["settle_funding", "settle_funding"]
@@ -109,6 +110,8 @@ def test_funding_charges_one_twenty_fourth_of_time_value(rig: Rig) -> None:
     rig.chain.now_ns = T0 + HOUR + 30 * SEC
     rig.chain.set_spot("ETH", 2_110)
     rig.keeper.tick_funding(rig.chain.now_ns)
+    rig.keeper.tick_funding(rig.chain.now_ns)
+    assert len(rig.store.funding_history(None, 10)) == 2
     for h in rig.store.funding_history(None, 10):
         is_call = h["series"].endswith("C")
         intr = margin.intrinsic(is_call, 2_110 * 10**8, 2_100 * 10**8)
@@ -134,9 +137,27 @@ def test_one_series_failing_does_not_block_the_others(rig: Rig) -> None:
     rig.chain.fail_next = "epoch is not current"
     with pytest.raises(TxError):
         rig.keeper.tick_funding(rig.chain.now_ns)
-    assert [m for m, _ in rig.chain.calls] == ["settle_funding"]  # the second series still settled
-    rig.keeper.tick_funding(rig.chain.now_ns)  # and the first one is retried next turn
+    assert rig.chain.calls == []
+    rig.keeper.tick_funding(rig.chain.now_ns)  # the other series goes first next turn
+    assert [m for m, _ in rig.chain.calls] == ["settle_funding"]
+    rig.keeper.tick_funding(rig.chain.now_ns)  # then the failed one is retried
     assert len(rig.chain.calls) == 2
+    assert {s["last_epoch"] for s in rig.chain.series.values()} == {str(rig.chain.now_ns // HOUR)}
+
+
+def test_a_series_that_keeps_failing_does_not_starve_the_rest(rig: Rig) -> None:
+    rig.chain.add_series("ETH-2000-C", "ETH-2000-P")
+    rig.chain.now_ns = T0 + HOUR + 30 * SEC
+    rig.chain.set_spot("ETH", 2_110)
+    rig.chain.fail_series = {"ETH-2100-C"}
+    for _ in range(6):
+        try:
+            rig.keeper.tick_funding(rig.chain.now_ns)
+        except TxError:
+            pass
+    # ETH-2100-C failed every time it was tried; the other three still settled.
+    settled = {k for k, s in rig.chain.series.items() if s["last_epoch"] != "0"}
+    assert settled == {"ETH-2100-P", "ETH-2000-C", "ETH-2000-P"}
 
 
 def test_funding_waits_while_spot_is_stale(rig: Rig) -> None:
@@ -191,14 +212,37 @@ def rig() -> Rig:
     return Rig()
 
 
-def test_a_funding_backlog_is_settled_a_few_at_a_time_so_spot_is_never_starved(rig: Rig) -> None:
+def test_a_funding_backlog_is_settled_one_at_a_time_so_spot_is_never_starved(rig: Rig) -> None:
     rig.chain.add_series("ETH-2000-C", "ETH-2000-P", "ETH-2200-C")  # five series in all
     rig.chain.now_ns = T0 + HOUR + 30 * SEC
     rig.chain.set_spot("ETH", 2_110)
     per_pass = []
-    for _ in range(4):
+    for _ in range(6):
         before = len(rig.chain.calls)
         rig.keeper.tick_funding(rig.chain.now_ns)
         per_pass.append(len(rig.chain.calls) - before)
-    assert per_pass == [2, 2, 1, 0]
+    assert per_pass == [1, 1, 1, 1, 1, 0]
     assert {s["last_epoch"] for s in rig.chain.series.values()} == {str(rig.chain.now_ns // HOUR)}
+
+
+def test_spot_posts_do_not_wait_for_execution_but_settlements_do(rig: Rig) -> None:
+    rig.post()
+    rig.chain.now_ns = T0 + HOUR + 30 * SEC
+    rig.chain.set_spot("ETH", 2_110)
+    rig.keeper.tick_funding(rig.chain.now_ns)
+    assert ("post_spot", "INCLUDED") in rig.chain.waits
+    assert ("settle_funding", "EXECUTED_OPTIMISTIC") in rig.chain.waits
+
+
+def test_posts_refused_on_chain_are_noticed_and_the_feed_resyncs(rig: Rig, caplog) -> None:  # type: ignore[no-untyped-def]
+    rig.post()
+    landed = rig.chain.spots["ETH"][1]
+    rig.chain.drop_spot_posts = 5
+    for _ in range(5):
+        rig.advance(5)
+        rig.post()
+    assert rig.chain.spots["ETH"][1] == landed  # nothing landed, and no error was raised
+    rig.advance(5)
+    rig.post()
+    assert "resyncing" in caplog.text
+    assert rig.chain.spots["ETH"][1] == rig.chain.now_ns  # posting again, in step with the chain
