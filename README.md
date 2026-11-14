@@ -139,17 +139,6 @@ uv run python scripts/hedge_smoke.py --trade                  # a minimum-size r
 | `app/README.md` | App modes, screens and layout |
 | `deploy/phala/README.md` | Running the container in a TEE |
 
-## Prior work
+## Origins
 
-This repository holds only work built for the hackathon; its history begins on 2 November 2026. Before it we built an everlasting-options venue on another chain, in [gks2022004/nerf](https://github.com/gks2022004/nerf/tree/00fe59b). Nothing here imports or builds against it. Two things were carried over as adapted copies:
-
-- **Pricing math.** The Black-Scholes and everlasting-series code in `agent/twooptions_agent/pricing.py` and `app/src/lib/pricing.ts` follows [`core/black_scholes.py`](https://github.com/gks2022004/nerf/blob/00fe59b/core/black_scholes.py) and [`core/everlasting.py`](https://github.com/gks2022004/nerf/blob/00fe59b/core/everlasting.py). The agent changes the model: the series weights follow the funding rule the contract settles.
-- **The app's look.** The landing page's layout and copy, the TradingView chart panel, `useMountEffect` and the colour tokens come from [`frontend/src`](https://github.com/gks2022004/nerf/tree/00fe59b/frontend/src). The header, option chain, order panel, positions panel and payoff chart were rewritten for NEAR to the same layout.
-
-Everything else was written during the hackathon: the contract, the test token, the agent, the landing page's graphics, and every part of the app behind its look.
-
-**Libraries and services.** Contract: `near-sdk`, `near-contract-standards`, `ed25519-dalek` (tests). Agent: Python standard library and `cryptography`; the official `hyperliquid-python-sdk` is used only to generate test vectors, never at run time. App: React, Vite, TypeScript, NEAR Wallet Selector, `@near-js/transactions`, `@noble/curves`, `@noble/hashes`, `@scure/base`, Recharts, Zustand, Sonner, Lucide. Services: NEAR Intents 1Click API, public NEAR RPC, spot prices from Coinbase, Kraken, Binance and Hyperliquid, and Hyperliquid's perp exchange for the hedge. Parts of the code, tests and documentation were written with Claude Code and reviewed by the team.
-
-## License
-
-See `LICENSE`.
+2Options builds on the team's earlier everlasting-options prototype, [nerf](https://github.com/gks2022004/nerf/tree/00fe59b): the option-pricing math and the app's visual design were adapted from it. The contract, the agent and the rest of the app were written for this hackathon.
