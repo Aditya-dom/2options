@@ -2,6 +2,7 @@ import { X } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../theme';
+import InfoTip from './InfoTip';
 
 /** Portalled to <body> so it never inherits styles (e.g. the header's nowrap) or gets clipped. */
 export function Dialog({ title, onClose, children, width = 400 }: { title: string; onClose: () => void; children: ReactNode; width?: number }) {
@@ -22,8 +23,10 @@ export function Dialog({ title, onClose, children, width = 400 }: { title: strin
 }
 
 /** `bare` drops the frame and title bar, for content that sits inside a tabbed or edge-to-edge layout. */
-export function Panel({ title, right, children, style, bodyStyle, bare }: {
+export function Panel({ title, right, children, style, bodyStyle, bare, info }: {
   title: string; right?: ReactNode; children: ReactNode; style?: CSSProperties; bodyStyle?: CSSProperties; bare?: boolean;
+  /** Explanation behind an (i) next to the title. */
+  info?: ReactNode;
 }) {
   const { t } = useTheme();
   if (bare) return <section aria-label={title} style={{ padding: 12, minWidth: 0, ...bodyStyle }}>{children}</section>;
@@ -33,7 +36,7 @@ export function Panel({ title, right, children, style, bodyStyle, bare }: {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px',
         borderBottom: `1px solid ${t.BORDER}`, fontFamily: t.MONO, fontSize: 10, letterSpacing: '0.16em', color: t.ACCENT,
       }}>
-        <span>{title}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{title}{info != null && <InfoTip label={`About ${title.toLowerCase()}`}>{info}</InfoTip>}</span>
         {right}
       </header>
       <div style={{ padding: 12, minWidth: 0, ...bodyStyle }}>{children}</div>

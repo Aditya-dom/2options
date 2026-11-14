@@ -7,7 +7,7 @@ import { useTheme } from '../theme';
 import { fmtDuration } from './FundingPanel';
 import type { FundsMode } from './FundsDialog';
 import HedgePanel from './HedgePanel';
-import { AmountInput, Button, Empty, Note, Panel, Row, Stat } from './ui';
+import { AmountInput, Button, Empty, Panel, Row, Stat } from './ui';
 
 /** LP shares carry 6 implied decimals (the first deposit mints 1 share unit per USDC micro). */
 const SHARE_DECIMALS = 6;
@@ -61,7 +61,12 @@ export default function VaultPage({ onFunds }: { onFunds: (m: FundsMode) => void
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 12, alignItems: 'start' }}>
       <div style={{ display: 'grid', gap: 12 }}>
-        <Panel title="LP VAULT">
+        <Panel title="LP VAULT" info={<>
+          The vault is the counterparty to every trade and earns the spread and hourly funding.{' '}
+          {hedge?.enabled
+            ? <>The agent hedges its net delta with a perp position off chain (Delta hedge, below); that hedge's profit and loss is <b>not</b> in the equity or share price here.</>
+            : <>Its net delta is <b>not hedged</b>: LPs carry that price risk. The agent reports the perp position that would offset it.</>}
+        </>}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 14 }}>
             <Stat label="Vault equity" value={equity != null ? fmtUsdc(equity, 0) : '—'} sub={equity == null ? 'spot stale' : undefined} />
             <Stat label="Share price" value={sharePrice != null ? fmtFixed(sharePrice, 6, 6) : '—'} sub="USDC per share" />
@@ -82,14 +87,6 @@ export default function VaultPage({ onFunds }: { onFunds: (m: FundsMode) => void
               <Row label="Paid to traders this hour"
                 value={`${fmtUsdc(vault.epochNetOutflow > 0n ? vault.epochNetOutflow : 0n)} of ${fmtUsdc((vault.epochStartCash * params.max_epoch_outflow_bps) / 10_000n)} limit`} />
             )}
-          </div>
-          <div style={{ marginTop: 12 }}>
-            <Note>
-              The vault is the counterparty to every trade and earns the spread and hourly funding.{' '}
-              {hedge?.enabled
-                ? <>The agent hedges its net delta with a perp position off chain (below); that hedge's profit and loss is <b>not</b> in the equity or share price here.</>
-                : <>Its net delta is <b>not hedged</b>: LPs carry that price risk. The agent reports the perp position that would offset it.</>}
-            </Note>
           </div>
         </Panel>
 
@@ -122,7 +119,7 @@ export default function VaultPage({ onFunds }: { onFunds: (m: FundsMode) => void
         </Panel>
       </div>
 
-      <Panel title="YOUR LP POSITION">
+      <Panel title="YOUR LP POSITION" info="Deposit USDC for shares at the current share price. To leave, request a redemption: your shares burn now at the current price and the USDC unlocks after the cooldown, then claim it. Redemptions that would leave open risk under-collateralized are refused.">
         {!accountId ? (
           <div style={{ display: 'grid', gap: 10 }}>
             <div style={{ fontFamily: t.MONO, fontSize: 11, color: t.GRAY }}>Connect a wallet to provide liquidity.</div>
@@ -145,9 +142,6 @@ export default function VaultPage({ onFunds }: { onFunds: (m: FundsMode) => void
               <Button variant="ghost" onClick={doRedeem} disabled={busy || redeemUnits == null || redeemErr != null}>
                 REQUEST REDEMPTION
               </Button>
-              <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.DIM, lineHeight: 1.5 }}>
-                Shares burn now at the current price; the USDC unlocks after the cooldown. Redemptions that would leave open risk under-collateralized are refused.
-              </div>
             </div>
 
             {lpClaim && (

@@ -45,7 +45,10 @@ export function HedgeView({ hedge, now }: { hedge: HedgeStatus | null; now: numb
     : <Badge color={t.GREEN}>{`LIVE · ${(hedge.venue ?? '').toUpperCase()} ${(hedge.network ?? '').toUpperCase()}`}</Badge>;
 
   return (
-    <Panel title="DELTA HEDGE" right={badge}>
+    <Panel title="DELTA HEDGE" right={badge} info={hedge.enabled
+      ? <>The hedge is a perp position in an exchange account the operator holds, <b>not in the contract</b>. It lowers the price risk LPs carry. Its profit and loss is <b>not</b> part of the vault equity or share price shown here.
+        {hedge.rehedgeMoveBps != null && hedge.deadbandUsd != null && <> Every re-hedge costs spread and fees, so the hedger waits until delta has drifted by what a {(hedge.rehedgeMoveBps / 100).toFixed(1)}% move in spot causes (at least {fmtUsd(hedge.deadbandUsd, 0)}); the vault carries that drift in between.</>}</>
+      : <>Hedging is switched off on this agent, so LPs carry the vault's net delta. The target above is the perp position that would offset it.</>}>
       {hedge.rows.length === 0 ? <Empty>No open interest to hedge.</Empty> : hedge.rows.map(r => {
         const sum = rowSummary(r);
         return (
@@ -87,14 +90,6 @@ export function HedgeView({ hedge, now }: { hedge: HedgeStatus | null; now: numb
 
       {hedge.orders.length > 0 && <Orders orders={hedge.orders.slice(0, 8)} />}
 
-      <div style={{ marginTop: 12 }}>
-        <Note>
-          {hedge.enabled
-            ? <>The hedge is a perp position in an exchange account the operator holds, <b>not in the contract</b>. It lowers the price risk LPs carry. Its profit and loss is <b>not</b> part of the vault equity or share price shown here.
-              {hedge.rehedgeMoveBps != null && hedge.deadbandUsd != null && <> Every re-hedge costs spread and fees, so the hedger waits until delta has drifted by what a {(hedge.rehedgeMoveBps / 100).toFixed(1)}% move in spot causes (at least {fmtUsd(hedge.deadbandUsd, 0)}); the vault carries that drift in between.</>}</>
-            : <>Hedging is switched off on this agent, so LPs carry the vault's net delta. The target above is the perp position that would offset it.</>}
-        </Note>
-      </div>
     </Panel>
   );
 }
