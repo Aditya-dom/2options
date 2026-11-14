@@ -211,6 +211,8 @@ class Hedger:
         self.cfg = cfg or HedgeConfig()
         self._clock = clock
         self._lock = threading.Lock()
+        #: Set when the vault's book changes, so the next pass runs now instead of after a sleep.
+        self._wake = threading.Event()
         self._rows: dict[str, dict[str, Any]] = {}
         self._account: dict[str, str] = {}
         self._error: str | None = None
@@ -432,4 +434,11 @@ class Hedger:
                     log.debug("hedger pass failed again: %s", text)
                 else:
                     log.exception("hedger pass failed; no order sent")
-            stop.wait(self.cfg.interval_s)
+            # Sleep until the next pass, or until `poke` says the book changed.
+            self._wake.wait(self.cfg.interval_s)
+            self._wake.clear()
+
+    def poke(self) -> None:
+        """Run the next pass now: the vault's book changed (a trade landed), so the target moved.
+        A pass still trades only when the gap is outside the band, so waking early adds no orders."""
+        self._wake.set()

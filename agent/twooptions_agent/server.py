@@ -46,7 +46,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 from . import config, inventory, near, tee
-from .chain import NS, ChainCache, rpc_viewer
+from .chain import NS, ChainCache, Snapshot, rpc_viewer
 from .hedger import Hedger
 from .keeper import Keeper
 from .quoter import QuoteError, Quoter
@@ -167,6 +167,8 @@ class App:
     store: Store
     keeper: Keeper | None = None
     hedger: Hedger | None = None
+    #: Until when (monotonic clock) the snapshot refreshes fast: set by every signed quote.
+    fast_until: float = 0.0
     cors: list[str] = field(default_factory=list)
     #: Quotes per source address. Behind a gateway that hides the client every user shares
     #: this one, so it is a ceiling on the whole site there and set well above one user's need.
@@ -253,6 +255,7 @@ class App:
             held = sum(int(p["size"]) for p in acct["positions"] if p["series"] == q["series"])
             self.quoter.check_limits(snap, q["series"], side, size, held)
         signed = self.quoter.quote(snap, q["series"], side, size, taker)
+        self.fast_until = time.monotonic() + WARM_FAST_FOR_S  # a trade may land: watch closely
         # The contract only trades for accounts that have deposited, and only those go on the
         # watch list. That it exists is believed for a short while, then read again.
         if not checked and self._remembered(taker) is not True:
@@ -457,14 +460,30 @@ def _static_dir() -> Path | None:
     return d
 
 
-def _warm(cache: ChainCache, stop: threading.Event) -> None:
-    """Keep the snapshot fresh so a quote request never waits on five RPC calls."""
+#: Snapshot refresh interval: fast for a while after a quote is signed (a trade is probably about
+#: to land and the hedge should follow it), slow otherwise to spare the public RPC endpoints.
+WARM_FAST_S, WARM_SLOW_S, WARM_FAST_FOR_S = 1.0, 3.0, 45.0
+
+
+def _book(snap: Snapshot) -> tuple[tuple[str, int], ...]:
+    """The vault's open interest: what the hedge target is computed from."""
+    return tuple(sorted((s.id, s.net_trader_size) for s in snap.series.values()))
+
+
+def _warm(app: App, stop: threading.Event) -> None:
+    """Keep the snapshot fresh so a quote request never waits on five RPC calls, and wake the
+    hedger as soon as a refresh shows the book changed."""
+    last: tuple[tuple[str, int], ...] | None = None
     while not stop.is_set():
         try:
-            cache.refresh()
+            book = _book(app.cache.refresh())
+            if last is not None and book != last and app.hedger is not None:
+                app.hedger.poke()
+            last = book
         except Exception as e:
             log.warning("snapshot refresh failed: %s", e)
-        stop.wait(3.0)
+        fast = time.monotonic() < app.fast_until
+        stop.wait(WARM_FAST_S if fast else WARM_SLOW_S)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -505,7 +524,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     stop = threading.Event()
-    threads = [threading.Thread(target=_warm, args=(app.cache, stop), daemon=True, name="warm")]
+    threads = [threading.Thread(target=_warm, args=(app, stop), daemon=True, name="warm")]
     if app.keeper:
         threads.append(
             threading.Thread(target=app.keeper.run, args=(stop,), daemon=True, name="keeper")

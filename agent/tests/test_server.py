@@ -640,3 +640,38 @@ def test_an_account_that_has_emptied_and_gone_is_refused_once_it_is_read_again(
     }
     now["t"] += 31.0
     assert ask() == 200  # it deposits again and is quoted again
+
+
+def test_the_warm_loop_wakes_the_hedger_only_when_the_book_changes(
+    app: App, chain: FakeChain, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from twooptions_agent import server
+
+    monkeypatch.setattr(server, "WARM_FAST_S", 0.0)
+    monkeypatch.setattr(server, "WARM_SLOW_S", 0.0)
+    pokes: list[int] = []
+    app.hedger = type("H", (), {"poke": lambda self: pokes.append(1)})()  # type: ignore[assignment]
+    stop = threading.Event()
+    refreshes = 0
+    real = app.cache.refresh
+
+    def refresh():  # type: ignore[no-untyped-def]
+        nonlocal refreshes
+        refreshes += 1
+        if refreshes == 3:  # a trade lands between the 2nd and 3rd refresh
+            chain.series["ETH-2100-C"]["net_trader_size"] = "100000"
+        if refreshes >= 6:
+            stop.set()
+        return real()
+
+    app.cache.refresh = refresh  # type: ignore[method-assign]
+    server._warm(app, stop)
+    assert refreshes >= 6 and pokes == [1]  # one change, one wake-up
+
+
+def test_a_signed_quote_speeds_up_the_snapshot_refresh(app: App) -> None:
+    import time
+
+    assert app.fast_until < time.monotonic()
+    status, _ = app.handle("/quote", QUOTE, "1.1.1.1")
+    assert status == 200 and app.fast_until > time.monotonic() + 30

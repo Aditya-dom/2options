@@ -19,6 +19,8 @@ import { useWallet } from './useWallet';
 // Nothing is polled from the landing page or from a tab nobody is looking at.
 const POLL_MS = isDemo ? 1_000 : 5_000;
 const MAX_FUNDING_EVENTS = 200;
+/** Extra refreshes after a transaction, in ms: the hedge usually follows within a few seconds. */
+const AFTER_TX_REFRESH_MS = [2_000, 4_000, 7_000, 11_000, 16_000, 24_000];
 
 export interface FundingEvent {
   atMs: number;
@@ -84,6 +86,8 @@ export function ProtocolProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<ProtocolData>(EMPTY);
   const lastSeries = useRef<Map<string, Series>>(new Map());
   const inflight = useRef(false);
+  const followUps = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(() => () => { followUps.current.forEach(clearTimeout); }, []);
   const historyLoaded = useRef(false);
 
   const load = useCallback(async () => {
@@ -177,6 +181,9 @@ export function ProtocolProvider({ children }: { children: ReactNode }) {
         description: res.txHash ? 'Confirmed on chain.' : isDemo ? 'Demo contract updated.' : 'Submitted. Balances refresh shortly.',
         action: res.txHash ? { label: 'View', onClick: () => window.open(txUrl(res.txHash!), '_blank', 'noopener') } : undefined,
       });
+      // What follows a trade (the agent's hedge, indexer-backed history) lands over the next
+      // seconds: look again a few times instead of waiting for the regular poll.
+      for (const ms of AFTER_TX_REFRESH_MS) followUps.current.push(setTimeout(() => { void load(); }, ms));
       return true;
     } catch (e) {
       const hash = (e as { txHash?: string | null }).txHash;

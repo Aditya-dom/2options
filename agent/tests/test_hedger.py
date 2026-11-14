@@ -762,3 +762,25 @@ def test_the_status_the_app_is_tested_against_is_what_the_hedger_reports() -> No
         FIXTURE.write_text(text)
     assert FIXTURE.read_text() == text
     assert [o["status"] for o in enabled["orders"]] == ["rejected", "filled"]
+
+
+def test_a_poke_runs_the_next_pass_at_once_instead_of_after_the_interval(rig: Rig) -> None:
+    import threading
+    import time
+
+    passes: list[float] = []
+    rig.hedger.tick = lambda: passes.append(time.monotonic())  # type: ignore[method-assign]
+    object.__setattr__(
+        rig.hedger, "cfg", type(rig.hedger.cfg)(**{**rig.hedger.cfg.__dict__, "interval_s": 30.0})
+    )
+    stop = threading.Event()
+    t = threading.Thread(target=rig.hedger.run, args=(stop,), daemon=True)
+    t.start()
+    time.sleep(0.2)
+    assert len(passes) == 1  # first pass, then a 30 s sleep
+    rig.hedger.poke()
+    time.sleep(0.2)
+    assert len(passes) == 2  # woken early
+    stop.set()
+    rig.hedger.poke()
+    t.join(timeout=2)
