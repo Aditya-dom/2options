@@ -387,6 +387,12 @@ impl TwoOptions {
         let trader_cash_change = if quote.side == Side::Buy { -cash } else { cash };
         self.roll_outflow_epoch(now);
         self.change_collateral(&mut acct, trader_cash_change);
+        // A buy is paid in full from cash. A long carries no margin requirement, so nothing
+        // after this point would stop one being opened on credit: the premium would never be
+        // collected, while any gain would be paid out in real USDC.
+        if quote.side == Side::Buy {
+            require!(acct.collateral >= 0, "not enough cash to pay the premium");
+        }
         self.vault_cash = sub(self.vault_cash, trader_cash_change);
         require!(self.vault_cash >= 0, "vault cannot fund this trade");
         // Hourly cap on what the vault pays out net, so a misbehaving agent key cannot drain it
@@ -525,8 +531,12 @@ impl TwoOptions {
         );
     }
 
-    /// Close every position of an account that has fallen below the liquidation ratio. The caller
-    /// needs an account (any deposit) to receive the reward.
+    /// Close every position of an account that can no longer carry them: one below the
+    /// liquidation ratio, or one whose equity is negative once the funding it owes is settled.
+    /// The second case is the long side. A long has no margin requirement, but it owes funding
+    /// every hour; when its cash can no longer pay, the position is closed at the mark and what
+    /// is left goes back to the trader. The caller needs an account (any deposit) to receive
+    /// the reward.
     pub fn liquidate(&mut self, account_id: AccountId) {
         let liquidator_id = env::predecessor_account_id();
         // Two clones of one account would overwrite each other when saved.
@@ -542,19 +552,24 @@ impl TwoOptions {
         self.apply_funding(&mut victim);
         let (equity, req) = self.account_risk(&victim).expect("spot price is stale");
         require!(
-            req > 0 && mul(equity, BPS) < mul(req, self.params.liquidation_ratio_bps as i128),
+            equity < 0 || (req > 0 && mul(equity, BPS) < mul(req, self.params.liquidation_ratio_bps as i128)),
             "account is not liquidatable"
         );
 
         // Close everything at the liability mark (a fair mid between asset and liability value).
+        // Fees are charged on what each leg could cost the vault: the spot notional of a short,
+        // the value bought back for a long. Charging a long on spot notional would take most of
+        // an out-of-the-money option, which is worth less than the fee.
         let mut value: i128 = 0;
         let mut notional: i128 = 0;
         for pos in &victim.positions {
             let s = self.series.get(&pos.series).cloned().expect("series missing");
             let spot = self.spot_or_panic(s.underlying);
             let mark = liability_mark(s.kind, spot, s.strike, s.last_mark, &self.params);
-            value = add(value, position_value(pos.size, mark));
-            notional = add(notional, mul_div_ceil(pos.size.abs(), spot_usdc(spot), SIZE_SCALE));
+            let leg_value = position_value(pos.size, mark);
+            value = add(value, leg_value);
+            let fee_base = if pos.size < 0 { mul_div_ceil(-pos.size, spot_usdc(spot), SIZE_SCALE) } else { leg_value };
+            notional = add(notional, fee_base);
             let sm = self.series.get_mut(&pos.series).unwrap();
             sm.net_trader_size = sub(sm.net_trader_size, pos.size);
         }

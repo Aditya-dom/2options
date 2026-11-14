@@ -6,7 +6,7 @@ Everlasting-options vault and settlement contract for NEAR. Source: [twooptions/
 
 ```bash
 cd contracts/twooptions
-cargo test --lib                                                    # 77 unit tests
+cargo test --lib                                                    # 84 unit tests
 cargo clippy --lib --target wasm32-unknown-unknown -- -D warnings
 cargo build --lib --target wasm32-unknown-unknown --release         # ~530 KB wasm
 ```
@@ -101,6 +101,8 @@ The JSON API takes 64 and 128-bit numbers as strings (`U128`, `U64`, `I128`).
 - The vault has its own risk limit, so LPs cannot be loaded with more short risk than their capital supports, and LPs cannot redeem capital that backs open risk.
 - The ledger invariant (trader cash + vault cash + insurance + pending LP claims = net USDC received) is checked after every operation in the random test, including liquidations.
 - If vault cash plus insurance goes negative, withdrawals halt until it is recapitalised. Deposits, LP deposits and liquidations stay open.
+- A buy is paid in full from cash (`not enough cash to pay the premium`). A long has no margin requirement, so before this rule it could be opened on credit: the premium was never collected and any gain was paid out.
+- An account can be liquidated when its equity is under 1.15 times its requirement, or when its equity is negative once the funding it owes is charged. The second test is the long side: an everlasting long owes funding every hour and is closed at the mark when its cash can no longer pay. Liquidation fees are charged on the spot notional of each short leg and on the mark value of each long leg, so closing an out-of-the-money long does not cost more than it is worth.
 
 ## Known limitations (read before demoing)
 
@@ -112,8 +114,9 @@ The JSON API takes 64 and 128-bit numbers as strings (`U128`, `U64`, `I128`).
 6. **Margin shocks are not calibrated** against the 12-scenario Rust model yet.
 7. **No NEP-245 positions yet.** Positions live inside the account record and are not transferable. The views expose them, including each position's `entry_index` (accrued funding is `size * (series.funding_index - entry_index) / 1e6`).
 8. **No gas measurement.** The worst case (32 series, 32 positions) has not been run on a sandbox.
-9. **Accounts cannot be listed.** `accounts` is a `LookupMap`, so a liquidator has to learn account ids off chain. The agent's keeper watches the accounts it has quoted for.
-10. **Unaudited.** The Rust unit tests are not a substitute for an external review.
+9. **A long has no funding buffer.** It becomes liquidatable at negative equity, when the cushion left is its time value (about a day of funding). A keeper that is away for longer leaves a shortfall for insurance and then the vault (`unpaid_funding_beyond_a_longs_value_is_a_shortfall_not_a_free_ride` in `tests.rs`). A funding reserve in the long's requirement would fix it and means changing `margin.rs`, both ports and the fixtures.
+10. **Accounts cannot be listed.** `accounts` is a `LookupMap`, so a liquidator has to learn account ids off chain. The agent's keeper watches the accounts it has quoted for.
+11. **Unaudited.** The Rust unit tests are not a substitute for an external review.
 
 ## Differences from NEAR_CONTRACT_SPEC.md
 

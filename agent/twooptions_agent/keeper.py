@@ -1,4 +1,5 @@
-"""Keeper (#23): posts spot, settles hourly funding and scans for liquidations.
+"""Keeper (#23): posts spot, settles hourly funding and liquidates accounts that can no longer
+carry their positions (shorts under the margin ratio, longs that cannot pay their funding).
 
 Three jobs on one thread, each isolated: a failure in one is logged and retried on its next
 turn and never stops the others. All of them go through one NEAR account, one transaction at a
@@ -71,6 +72,8 @@ class KeeperStatus:
     last_spot_hold: dict[str, str] = field(default_factory=dict)
     last_funding_epoch: dict[str, int] = field(default_factory=dict)
     liquidations: int = 0
+    #: The most recent liquidations, newest first: account, who sent it, transaction and when.
+    liquidated: list[dict[str, str]] = field(default_factory=list)
     errors: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, object]:
@@ -79,8 +82,23 @@ class KeeperStatus:
             "last_spot_hold": dict(self.last_spot_hold),
             "last_funding_epoch": dict(self.last_funding_epoch),
             "liquidations": self.liquidations,
+            "liquidated": [dict(x) for x in self.liquidated],
             "errors": dict(self.errors),
         }
+
+
+def pending_funding(positions: list[dict[str, Any]], snap: Snapshot) -> int:
+    """Funding an account owes that has not been charged yet, in USDC micros, rounded as the
+    contract's `apply_funding` rounds it. Positive means the account pays."""
+    owed = 0
+    for p in positions:
+        s = snap.series.get(str(p.get("series")))
+        if s is None or p.get("entry_index") is None:
+            continue
+        diff = s.funding_index - int(str(p["entry_index"]))
+        if diff:
+            owed += margin.mul_div_ceil(int(str(p["size"])), diff, margin.SIZE_SCALE)
+    return owed
 
 
 class Keeper:
@@ -254,11 +272,16 @@ class Keeper:
                 continue
             if not acct["positions"] or acct["equity"] is None or acct["requirement"] is None:
                 continue
-            equity, req = int(acct["equity"]), int(acct["requirement"])
-            if not (req > 0 and equity * margin.BPS < req * ratio):
+            # The view shows equity before funding the account owes but has not yet been charged;
+            # `liquidate` charges it first, so the scan has to count it too. Without this a long
+            # whose cash has run out looks solvent for ever: nothing else touches its account.
+            owed = pending_funding(acct["positions"], snap)
+            equity, req = int(acct["equity"]) - owed, int(acct["requirement"])
+            # The contract's test (lib.rs `liquidate`): negative equity, or under the ratio.
+            if not (equity < 0 or (req > 0 and equity * margin.BPS < req * ratio)):
                 continue
             try:
-                self.sender.call(
+                res = self.sender.call(
                     self.contract_id, "liquidate", {"account_id": account_id}, gas=100 * TGAS
                 )
             except Exception as e:
@@ -273,7 +296,24 @@ class Keeper:
                     continue  # recovered between the view and the call
                 raise
             self.status.liquidations += 1
-            log.warning("liquidated %s (equity %d, requirement %d)", account_id, equity, req)
+            self.status.liquidated.insert(
+                0,
+                {
+                    "account": account_id,
+                    "liquidator": self.sender.account_id,
+                    "tx_hash": res.tx_hash,
+                    "ts_ns": str(time.time_ns()),
+                },
+            )
+            del self.status.liquidated[20:]
+            log.warning(
+                "liquidated %s in %s (equity %d after %d of funding owed, requirement %d)",
+                account_id,
+                res.tx_hash,
+                equity,
+                owed,
+                req,
+            )
 
     # -- loop ---------------------------------------------------------------------------------
 

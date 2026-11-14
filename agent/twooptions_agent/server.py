@@ -6,13 +6,17 @@
     GET /funding/history?series=&limit= settlements this agent has posted, newest first
     GET /attestation                    the agent's public key (and TEE fields when set)
     GET /inventory                      vault position, net delta and hedge target
+    GET /hedge                          the hedger: target, venue position, gap, recent orders
     GET /health                         liveness and keeper status
 
 Numbers follow the contract's JSON rules: every 64/128-bit integer is a decimal string.
 Errors are non-200 with `{"error": "..."}`.
 
-    uv run python -m twooptions_agent.server            # quote server + keeper
+    uv run python -m twooptions_agent.server            # quote server + keeper (+ hedger)
     uv run python -m twooptions_agent.server --no-keeper
+    uv run python -m twooptions_agent.server --no-hedger
+
+The hedger runs when HYPERLIQUID_PRIVATE_KEY is set (see hedger.py).
 
 Standard library only: one thread per request, which is plenty for an RFQ desk and keeps the
 image that runs inside the TEE small.
@@ -33,8 +37,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
-from . import config, inventory, near, pricing
-from .chain import HOUR_NS, NS, ChainCache, rpc_viewer
+from . import config, inventory, near
+from .chain import NS, ChainCache, rpc_viewer
+from .hedger import Hedger
 from .keeper import Keeper
 from .quoter import QuoteError, Quoter
 from .spot import SpotFeed
@@ -73,6 +78,7 @@ class App:
     quoter: Quoter
     store: Store
     keeper: Keeper | None = None
+    hedger: Hedger | None = None
     cors: list[str] = field(default_factory=list)
     limiter: RateLimiter = field(default_factory=RateLimiter)
     code_hash: str = ""
@@ -109,7 +115,9 @@ class App:
                 for u, sp in snap.spots.items()
             }
         if path == "/inventory":
-            return 200, self._inventory()
+            return 200, self._inventory().to_json()
+        if path == "/hedge":
+            return 200, self._hedge()
         if path == "/quote":
             if not self.limiter.allow(client):
                 raise QuoteError(429, "too many quote requests")
@@ -133,22 +141,19 @@ class App:
             self.store.add_taker(taker)
         return signed.to_json()
 
-    def _inventory(self) -> Any:
-        snap = self.cache.get()
-        now = time.time_ns()
-        interval_h = snap.params.funding_interval_ns / HOUR_NS
-        fraction = self.quoter.cfg.funding_fraction
+    def _inventory(self) -> inventory.Inventory:
+        return inventory.from_snapshot(self.cache.get(), self.quoter, time.time_ns())
 
-        def delta(spot: float, strike: float, vol: float, is_call: bool) -> float:
-            return pricing.everlasting(spot, strike, vol, is_call, fraction, interval_h).delta
-
-        series = [
-            inventory.SeriesState(s.id, s.underlying, s.strike, s.is_call, s.net_trader_size)
-            for s in snap.series.values()
-        ]
-        spots = {u: p for u in snap.spots if (p := snap.fresh_spot(u, now)) is not None}
-        vols = {u: self.quoter.atm_vol(u) for u in snap.spots}
-        return inventory.compute(series, spots, vols, delta).to_json()
+    def _hedge(self) -> Any:
+        if self.hedger is not None:
+            return self.hedger.status()
+        # No hedger configured: say so, and show what it would hold.
+        inv = self._inventory()
+        return {
+            "enabled": False,
+            "underlyings": {u: {"target": round(t, 6)} for u, t in inv.hedge_target.items()},
+            "orders": [],
+        }
 
     def _health(self) -> Any:
         snap = self.cache.get()
@@ -160,6 +165,7 @@ class App:
             "series": len(snap.series),
             "spot_age_s": {u.name: round((now - sp.ts_ns) / NS, 1) for u, sp in snap.spots.items()},
             "keeper": self.keeper.status.to_json() if self.keeper else None,
+            "hedger": self.hedger is not None,
         }
 
     def cors_origin(self, origin: str | None) -> str | None:
@@ -219,7 +225,7 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def build_app(with_keeper: bool) -> App:
+def build_app(with_keeper: bool, with_hedger: bool = True) -> App:
     net = config.network()
     key = config.agent_key()
     cache = ChainCache(rpc_viewer(net.rpc_url, net.contract_id))
@@ -231,12 +237,15 @@ def build_app(with_keeper: bool) -> App:
         if sender is None:
             raise config.ConfigError("KEEPER_ACCOUNT_ID is not set; set it or run with --no-keeper")
         keeper = Keeper(net.contract_id, sender, key, cache, quoter, SpotFeed([]), store)
+    venue = config.hedge_venue(net) if with_hedger else None
+    hedger = Hedger(venue, cache, quoter, store, config.hedge_config()) if venue else None
     return App(
         contract_id=net.contract_id,
         cache=cache,
         quoter=quoter,
         store=store,
         keeper=keeper,
+        hedger=hedger,
         cors=config.cors_origins(),
         code_hash=os.environ.get("TWOOPTIONS_CODE_HASH", "").strip(),
         tee_quote_url=os.environ.get("TWOOPTIONS_TEE_QUOTE_URL", "").strip(),
@@ -255,9 +264,10 @@ def _warm(cache: ChainCache, stop: threading.Event) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="2Options agent: quote server and keeper")
-    p.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
-    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8787")))
+    p.add_argument("--host", help="default: HOST from the environment or .env, else 127.0.0.1")
+    p.add_argument("--port", type=int, help="default: PORT from the environment or .env, else 8787")
     p.add_argument("--no-keeper", action="store_true", help="serve quotes only")
+    p.add_argument("--no-hedger", action="store_true", help="never place hedge orders")
     p.add_argument("--env-file", default=".env")
     p.add_argument("-v", "--verbose", action="store_true")
     a = p.parse_args(argv)
@@ -267,8 +277,15 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     config.load_dotenv(Path(a.env_file))
+    # Resolved after the .env file is read, so HOST and PORT set there take effect.
+    a.host = a.host or os.environ.get("HOST", "").strip() or "127.0.0.1"
     try:
-        app = build_app(with_keeper=not a.no_keeper)
+        a.port = a.port or int(os.environ.get("PORT", "").strip() or "8787")
+    except ValueError:
+        log.error("PORT must be a number")
+        return 2
+    try:
+        app = build_app(with_keeper=not a.no_keeper, with_hedger=not a.no_hedger)
         registered = app.cache.view("is_agent_key", {"key": near.public_key_str(app.quoter.key)})
     except config.ConfigError as e:
         log.error("%s", e)
@@ -288,16 +305,26 @@ def main(argv: list[str] | None = None) -> int:
         threads.append(
             threading.Thread(target=app.keeper.run, args=(stop,), daemon=True, name="keeper")
         )
+    if app.hedger:
+        threads.append(
+            threading.Thread(target=app.hedger.run, args=(stop,), daemon=True, name="hedger")
+        )
     for t in threads:
         t.start()
     httpd = ThreadingHTTPServer((a.host, a.port), make_handler(app))
+    hedging = (
+        f"on {app.hedger.venue.name} {app.hedger.venue.network} as {app.hedger.venue.account}"
+        if app.hedger
+        else "off"
+    )
     log.info(
-        "agent %s for %s on http://%s:%d (keeper %s)",
+        "agent %s for %s on http://%s:%d (keeper %s, hedger %s)",
         near.public_key_str(app.quoter.key),
         app.contract_id,
         a.host,
         a.port,
         "on" if app.keeper else "off",
+        hedging,
     )
     try:
         httpd.serve_forever()

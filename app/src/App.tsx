@@ -8,6 +8,7 @@ import Header from './components/Header';
 import OptionChain, { type Pick } from './components/OptionChain';
 import Positions from './components/Positions';
 import Splitter from './components/Splitter';
+import StatusPage from './components/StatusPage';
 import StrategyBuilder from './components/StrategyBuilder';
 import TradeTicket from './components/TradeTicket';
 import VaultPage from './components/VaultPage';
@@ -109,6 +110,7 @@ export default function App() {
         <main style={{ flex: 1, padding: 12, display: 'grid', gap: 12, alignContent: 'start' }}>
           {route === 'strategy' && <StrategyBuilder />}
           {route === 'vault' && <VaultPage onFunds={setFunds} />}
+          {route === 'status' && <StatusPage />}
           {route === 'funding' && (
             <>
               <FundingPanel />

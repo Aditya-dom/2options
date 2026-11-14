@@ -6,7 +6,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import type { Call, ChainRow, FaucetStatus } from '../backend/types';
+import type { Call, ChainRow, FaucetStatus, HedgeStatus } from '../backend/types';
 import type { AccountState, LpClaim, Params, Series, SpotPoint, Underlying, Vault } from '../lib/contract';
 import { isDemo, txUrl } from '../lib/config';
 import { friendlyError } from '../lib/errors';
@@ -34,6 +34,8 @@ export interface ProtocolData {
   paused: boolean;
   chain: Map<string, ChainRow>;
   agentError: string | null;
+  /** The agent's delta hedger; null in demo mode or when the agent does not report one. */
+  hedge: HedgeStatus | null;
   account: AccountState | null;
   lpShares: bigint;
   lpClaim: LpClaim | null;
@@ -53,7 +55,7 @@ interface ProtocolCtx extends ProtocolData {
 }
 
 const EMPTY: ProtocolData = {
-  params: null, series: [], spots: {}, vault: null, paused: false, chain: new Map(), agentError: null,
+  params: null, series: [], spots: {}, vault: null, paused: false, chain: new Map(), agentError: null, hedge: null,
   account: null, lpShares: 0n, lpClaim: null, usdc: null, usdcRegistered: null, faucet: null, fundingEvents: [],
   loaded: false, error: null,
 };
@@ -100,6 +102,9 @@ export function ProtocolProvider({ children }: { children: ReactNode }) {
         agentError = e instanceof Error ? e.message : String(e);
       }
 
+      // Shown on the Vault page only; a failure here must not blank the rest of the app.
+      const hedge = agent.hedge ? await agent.hedge().catch(() => null) : null;
+
       const acct = accountId
         ? await Promise.all([
             backend.getAccount(accountId), backend.getLpShares(accountId), backend.getLpClaim(accountId),
@@ -129,7 +134,7 @@ export function ProtocolProvider({ children }: { children: ReactNode }) {
       }
 
       setData(d => ({
-        params, series, spots, vault, paused, chain, agentError,
+        params, series, spots, vault, paused, chain, agentError, hedge,
         account: acct?.[0] ?? null,
         lpShares: acct?.[1] ?? 0n,
         lpClaim: acct?.[2] ?? null,

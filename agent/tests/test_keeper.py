@@ -197,6 +197,70 @@ def test_only_accounts_below_the_liquidation_ratio_are_liquidated(rig: Rig) -> N
     assert "gone.testnet" not in rig.store.takers()  # removed on chain, dropped from the list
 
 
+def position(size: int, entry_index: int = 0, series: str = "ETH-2100-C") -> dict:
+    return {"series": series, "size": str(size), "entry_index": str(entry_index)}
+
+
+def holder(equity: int, requirement: int, *positions: dict) -> dict:
+    return {
+        "collateral": "0",
+        "positions": list(positions),
+        "equity": str(equity),
+        "requirement": str(requirement),
+    }
+
+
+def test_a_long_whose_cash_cannot_cover_its_funding_is_liquidated(rig: Rig) -> None:
+    """A long has no requirement, so the ratio test never fires. What it owes is funding, and
+    the view shows equity before funding is charged."""
+    rig.chain.series["ETH-2100-C"]["funding_index"] = "480001"  # 0.48 USDC per contract so far
+    rig.chain.accounts = {
+        "keeper.testnet": account(10**6, 0, positions=0),
+        # One contract each, entered at index 0, so each owes 480,001 micros.
+        "broke.testnet": holder(0, 0, position(1_000_000)),
+        "exact.testnet": holder(480_001, 0, position(1_000_000)),  # pays it with nothing left
+        "short_by_a_micro.testnet": holder(480_000, 0, position(1_000_000)),
+        "funded.testnet": holder(5_000_000, 0, position(1_000_000)),
+        # Entered at the current index: nothing owed yet.
+        "new.testnet": holder(0, 0, position(1_000_000, entry_index=480_001)),
+        # Rounding is the contract's: 0.001 contract owes ceil(480.001) = 481 micros, not 480.
+        "dust.testnet": holder(480, 0, position(1_000)),
+    }
+    for a in rig.chain.accounts:
+        rig.store.add_taker(a)
+    rig.keeper.tick_liquidations()
+    assert sorted(a["account_id"] for m, a in rig.chain.calls if m == "liquidate") == [
+        "broke.testnet",
+        "dust.testnet",
+        "short_by_a_micro.testnet",
+    ]
+    assert rig.keeper.status.liquidations == 3
+    # Each one is reported with its transaction, newest first, for /health and the demo script.
+    reported = rig.keeper.status.to_json()["liquidated"]
+    assert [x["account"] for x in reported] == [
+        "dust.testnet",
+        "short_by_a_micro.testnet",
+        "broke.testnet",
+    ]
+    assert all(x["tx_hash"].startswith("tx") and x["ts_ns"].isdigit() for x in reported)
+
+
+def test_unpaid_funding_counts_for_shorts_too(rig: Rig) -> None:
+    rig.chain.series["ETH-2100-C"]["funding_index"] = "10"
+    rig.chain.series["ETH-2100-P"]["funding_index"] = "-10"
+    rig.chain.accounts = {
+        "keeper.testnet": account(10**6, 0, positions=0),
+        # A short call is owed 10 (longs pay): 1,149 + 10 = 1,159, back above 1.15.
+        "saved.testnet": holder(1_149, 1_000, position(-1_000_000)),
+        # A short put owes 10 when the index fell: 1,155 - 10 = 1,145, now under 1.15.
+        "tipped.testnet": holder(1_155, 1_000, position(-1_000_000, series="ETH-2100-P")),
+    }
+    for a in rig.chain.accounts:
+        rig.store.add_taker(a)
+    rig.keeper.tick_liquidations()
+    assert rig.chain.calls == [("liquidate", {"account_id": "tipped.testnet"})]
+
+
 def test_keeper_without_a_contract_account_reports_why_it_cannot_liquidate(
     rig: Rig, caplog
 ) -> None:  # type: ignore[no-untyped-def]

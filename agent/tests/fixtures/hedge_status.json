@@ -1,0 +1,76 @@
+{
+ "disabled": {
+  "enabled": false,
+  "orders": [],
+  "underlyings": {
+   "ETH": {
+    "target": 2.379593
+   }
+  }
+ },
+ "enabled": {
+  "account": "0x1111111111111111111111111111111111111111",
+  "account_value": "1000",
+  "enabled": true,
+  "error": null,
+  "limits": {
+   "deadband_usd": 25.0,
+   "max_basis_bps": 500.0,
+   "max_order_usd": 5000.0,
+   "max_position_usd": 50000.0,
+   "rehedge_move_bps": 50.0,
+   "slippage_bps": 100.0
+  },
+  "margin_used": "0",
+  "network": "testnet",
+  "orders": [
+   {
+    "avg_px": null,
+    "cloid": "0x00000000000000000000000000000000",
+    "coin": "ETH",
+    "detail": "Insufficient margin to place order. asset=4",
+    "filled": "0",
+    "limit_px": "2121",
+    "oid": null,
+    "reduce_only": false,
+    "side": "buy",
+    "size": "1.4277",
+    "status": "rejected",
+    "ts_ns": "1794268865000000000",
+    "venue": "hyperliquid"
+   },
+   {
+    "avg_px": "2100",
+    "cloid": "0x00000000000000000000000000000000",
+    "coin": "ETH",
+    "detail": "",
+    "filled": "0.9518",
+    "limit_px": "2121",
+    "oid": 1,
+    "reduce_only": false,
+    "side": "buy",
+    "size": "2.3795",
+    "status": "filled",
+    "ts_ns": "1794268860000000000",
+    "venue": "hyperliquid"
+   }
+  ],
+  "underlyings": {
+   "ETH": {
+    "band": 0.356531,
+    "basis_bps": -47.4,
+    "entry_px": "2100",
+    "gap": 1.427793,
+    "position": "0.9518",
+    "reason": "rebalancing",
+    "state": "trade",
+    "target": 2.379593,
+    "unrealized_pnl": "0",
+    "venue_mid": "2100"
+   }
+  },
+  "updated_ns": "1794268865000000000",
+  "venue": "hyperliquid",
+  "withdrawable": "1000"
+ }
+}

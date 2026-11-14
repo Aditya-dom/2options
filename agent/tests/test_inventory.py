@@ -56,3 +56,16 @@ def test_rebalance_deadband() -> None:
     assert rebalance(12.5, 12.2, 0.5) == 0.0
     assert rebalance(12.5, 10.0, 0.5) == pytest.approx(2.5)
     assert rebalance(-3.0, 1.0, 0.5) == pytest.approx(-4.0)
+
+
+def test_net_gamma_is_reported_when_a_gamma_function_is_given() -> None:
+    series = [
+        SeriesState.from_view(view("ETH-2100-C", "ETH", 2_100, "Call", 4 * ONE)),
+        SeriesState.from_view(view("ETH-2100-P", "ETH", 2_100, "Put", -1 * ONE)),
+    ]
+    spots = {ETH: 2_100 * USD}
+    inv = compute(series, spots, gamma_fn=lambda s, k, v, c: 0.005)
+    # The vault is short 4 calls and long 1 put: -4 x 0.005 + 1 x 0.005.
+    assert inv.net_gamma == {"ETH": pytest.approx(-0.015)}
+    assert compute(series, spots).net_gamma == {}
+    assert "net_gamma" in inv.to_json()

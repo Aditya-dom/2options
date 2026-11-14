@@ -6,6 +6,7 @@
 
 const FRIENDLY: Array<[RegExp, string]> = [
   [/quote expired|nonce already used|quote expiry is too far/, 'That quote has expired. Get a fresh quote and submit again.'],
+  [/not enough cash to pay the premium/, 'You do not have enough USDC deposited to pay this premium. Deposit more or reduce the size.'],
   [/insufficient margin for this trade/, 'Not enough margin for this trade. Deposit more USDC or reduce the size.'],
   [/vault risk limit reached|vault cannot fund this trade/, 'The vault cannot take on more risk right now. Try a smaller size or the other side.'],
   [/spot price is stale/, 'Prices are paused while the spot feed catches up. Try again in a few seconds.'],

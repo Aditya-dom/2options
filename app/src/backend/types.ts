@@ -50,6 +50,8 @@ export interface Backend {
   usdcRegistered(accountId: string): Promise<boolean>;
   /** `is_agent_key`: whether the contract accepts signatures from this key. Null when not applicable. */
   isAgentKey(key: string): Promise<boolean | null>;
+  /** `get_solvency`: the contract's ledger against the USDC it has received. Only the status page reads it. */
+  getSolvency?(): Promise<Solvency>;
 
   /** The account's fills, newest first. */
   tradeHistory(accountId: string): Promise<Fill[]>;
@@ -132,6 +134,125 @@ export interface FundingHistoryRow {
   atMs: number;
 }
 
+/** `GET /hedge`: the agent's delta hedger (agent/twooptions_agent/hedger.py). */
+export interface HedgeJson {
+  enabled: boolean;
+  venue?: string;
+  network?: string;
+  /** The exchange account that holds the hedge. The operator controls it; the contract does not. */
+  account?: string;
+  updated_ns?: string;
+  /** Why the last pass failed, when it did. No order is sent while this is set. */
+  error?: string | null;
+  account_value?: string;
+  underlyings: Record<string, {
+    /** Perp position that offsets the vault's delta, in units of the underlying. Null when the contract's spot is stale. */
+    target: number | null;
+    position?: string;
+    gap?: number | null;
+    /** Half-width of the no-trade band, in units of the underlying: no order while |gap| is inside it. */
+    band?: number | null;
+    state?: HedgeState;
+    reason?: string;
+    venue_mid?: string | null;
+    basis_bps?: number | null;
+    entry_px?: string | null;
+    unrealized_pnl?: string | null;
+  }>;
+  orders: {
+    ts_ns: string; coin: string; side: 'buy' | 'sell'; size: string; limit_px: string; reduce_only: boolean;
+    status: HedgeOrderStatus; filled?: string; avg_px?: string | null; detail?: string;
+  }[];
+  limits?: { deadband_usd: number; rehedge_move_bps?: number; max_order_usd: number; max_position_usd: number };
+}
+
+/** `balanced`: nothing to do. `trade`: an order went out this pass. `hold`: something is wrong, no order. */
+export type HedgeState = 'balanced' | 'trade' | 'hold';
+/** `unknown`: the request timed out, so the order may or may not have reached the venue. */
+export type HedgeOrderStatus = 'filled' | 'rejected' | 'unknown';
+
+export interface HedgeRow {
+  underlying: string;
+  target: number | null;
+  /** Null when no hedger is running. */
+  position: number | null;
+  gap: number | null;
+  /** The gap the hedger tolerates before trading; it widens with the book's gamma. */
+  band: number | null;
+  state: HedgeState | null;
+  reason: string;
+  venueMid: number | null;
+  basisBps: number | null;
+  unrealizedPnl: number | null;
+}
+
+export interface HedgeOrder {
+  atMs: number;
+  coin: string;
+  side: 'buy' | 'sell';
+  size: number;
+  filled: number;
+  avgPx: number | null;
+  reduceOnly: boolean;
+  status: HedgeOrderStatus;
+  detail: string;
+}
+
+export interface HedgeStatus {
+  enabled: boolean;
+  venue: string | null;
+  network: string | null;
+  account: string | null;
+  updatedMs: number | null;
+  error: string | null;
+  /** Collateral in the exchange account, USD. */
+  accountValue: number | null;
+  deadbandUsd: number | null;
+  /** The spot move whose delta drift the hedger tolerates, bps. */
+  rehedgeMoveBps: number | null;
+  rows: HedgeRow[];
+  orders: HedgeOrder[];
+}
+
+/** The contract's core invariant: what it owes everyone equals the USDC it has taken in, net. */
+export interface Solvency {
+  ledgerTotal: bigint;
+  netInflow: bigint;
+}
+
+/** `GET /health` (agent/twooptions_agent/server.py). */
+export interface HealthJson {
+  ok: boolean;
+  paused: boolean;
+  series: number;
+  spot_age_s: Record<string, number>;
+  keeper: {
+    last_spot_post_ns: Record<string, string>;
+    last_spot_hold: Record<string, string>;
+    last_funding_epoch: Record<string, number>;
+    liquidations: number;
+    liquidated?: { account: string; liquidator?: string; tx_hash: string; ts_ns: string }[];
+    errors: Record<string, string>;
+  } | null;
+  hedger?: boolean;
+}
+
+export interface AgentHealth {
+  /** Null when this agent runs without a keeper (`--no-keeper`). */
+  keeper: {
+    /** When the keeper last sent a price, per underlying. */
+    lastSpotPostMs: Record<string, number>;
+    /** Why it is holding a price back instead of posting, per underlying. */
+    spotHold: Record<string, string>;
+    /** Liquidations since the agent started, and the most recent ones. */
+    liquidations: number;
+    liquidated: { account: string; txHash: string; atMs: number }[];
+    /** The last failure of each job (`spot`, `funding`, `liquidations`) that has not succeeded since. */
+    errors: Record<string, string>;
+  } | null;
+  hedger: boolean;
+}
+
 export interface Agent {
   readonly kind: 'http' | 'mock';
   /** False when quotes cannot pass the contract's signature check (mock agent against a real chain). */
@@ -143,4 +264,8 @@ export interface Agent {
   attestation(): Promise<Attestation | null>;
   /** Past settlements, newest first. Only the quote server keeps them; RPC cannot list events. */
   fundingHistory?(limit: number): Promise<FundingHistoryRow[]>;
+  /** The delta hedger's state. Null when the agent is too old to report it. */
+  hedge?(): Promise<HedgeStatus | null>;
+  /** Liveness and keeper status, for the status page. */
+  health?(): Promise<AgentHealth>;
 }

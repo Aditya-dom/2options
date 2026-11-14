@@ -66,7 +66,9 @@ pub fn position_value(size: i128, mark: i128) -> i128 {
 ///
 /// - Scenario losses are computed per underlying (no netting across underlyings), across
 ///   the shocks in [`SHOCKS_BPS`], and only for underlyings that have a short leg. A long-only
-///   holder can never owe money, so it has no requirement.
+///   holder has no scenario loss, so it has no requirement. It still owes funding every hour:
+///   `trade` makes it pay the premium in full and `liquidate` closes it once its equity is
+///   negative (lib.rs).
 /// - A time-value reserve and a per-contract floor apply to every short contract.
 pub fn requirement(legs: &[Leg], spot_of: &dyn Fn(Underlying) -> i128, p: &Params) -> i128 {
     let mut seen: Vec<Underlying> = Vec::new();

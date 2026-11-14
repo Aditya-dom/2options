@@ -9,3 +9,9 @@ test('faucet cooldown keeps the wait from the contract message', () => {
 test('plain mappings are unchanged', () => {
   expect(friendlyError(new Error('Smart contract panicked: insufficient margin for this trade'))).toMatch(/^Not enough margin/);
 });
+
+test('a buy the account cannot pay for says to deposit, not that collateral is short', () => {
+  expect(friendlyError(new Error('Smart contract panicked: not enough cash to pay the premium'))).toBe(
+    'You do not have enough USDC deposited to pay this premium. Deposit more or reduce the size.',
+  );
+});
