@@ -5,7 +5,7 @@
 # attested compose hash then names exactly one image.
 services:
   twooptions:
-    image: ghcr.io/gks2022004/2options@sha256:REPLACE_WITH_DIGEST_FROM_CI
+    image: ghcr.io/gks2022004/2options@sha256:4d80696a4209aec288d14b1f4090b34fe5aba491f86f5ddc28a9e28eb46a63cd  # CI build of fab4519
     restart: always
     # The dstack guest agent's socket is owned by root; reading a quote from it needs root.
     # The VM runs nothing else.
