@@ -15,7 +15,7 @@ html, body, #root { min-height: 100%; margin: 0; }
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: 'JetBrains Mono', 'SFMono-Regular', Menlo, monospace;
+  font-family: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
   -webkit-font-smoothing: antialiased;
   color-scheme: var(--color-scheme, dark);
 }

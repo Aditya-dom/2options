@@ -12,8 +12,8 @@ const DARK = {
   GREEN: '#00d492', GREEN_DIM: '#0a3324', GREEN_BG: 'rgba(0,212,146,0.12)',
   RED: '#ff5068', RED_DIM: '#3a1018', RED_BG: 'rgba(255,80,104,0.12)',
   ORANGE: '#f5a623', YELLOW: '#f0c000', PURPLE: '#9d99ff',
-  MONO: "'JetBrains Mono', 'SFMono-Regular', 'Menlo', monospace",
-  SANS: "'Outfit', system-ui, sans-serif",
+  MONO: "'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace",
+  SANS: "'Geist', system-ui, -apple-system, sans-serif",
   /** Hard rule between panels: white on dark, black on light. */
   LINE: '#fff',
   /** Brand fill and the ink that sits on it (active tab, primary buttons). */

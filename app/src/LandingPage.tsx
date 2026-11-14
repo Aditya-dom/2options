@@ -16,9 +16,9 @@ const ACCENTS = {
   light: { text:'#117a45', fill:'#78f0a0', ink:'#172325', art:'47,179,106' },
   dark:  { text:'#78f0a0', fill:'#78f0a0', ink:'#172325', art:'120,240,160' },
 };
-const SERIF = "'DM Serif Display', Georgia, serif";
-const BODY = "'Outfit', system-ui, sans-serif";
-const MONO = "'JetBrains Mono', monospace";
+const DISPLAY = "'Geist', system-ui, sans-serif";
+const BODY = "'Geist', system-ui, sans-serif";
+const MONO = "'Geist Mono', ui-monospace, monospace";
 
 /* ── Theme definitions ── */
 type Theme = {
@@ -108,7 +108,7 @@ export default function LandingPage() {
         <nav style={{ display:'flex', alignItems:'center', padding:'0 32px', height:58, borderBottom:`1px solid ${t.border}`, transition:'border-color 0.4s' }}>
           <a href="#/" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none' }}>
             <img src="/logo.png?v=green" alt="2Options" style={{ width:24, height:24, borderRadius:3 }}/>
-            <span style={{ fontFamily:MONO, fontSize:12, fontWeight:600, letterSpacing:'0.12em', color:t.text, transition:'color 0.4s' }}>2Options</span>
+            <span style={{ fontFamily:DISPLAY, fontSize:17, fontWeight:600, letterSpacing:'-0.03em', color:t.text, transition:'color 0.4s' }}>2Options</span>
           </a>
           <div style={{ flex:1 }}/>
           <div className="lp-nav" style={{ display:'flex', alignItems:'center', gap:4 }}>
@@ -137,7 +137,7 @@ export default function LandingPage() {
           {/* Content */}
           <div style={{ position:'relative', zIndex:2, padding:'14vh 32px 0', textAlign:'center' }}>
             <FadeIn>
-              <h1 style={{ fontFamily:SERIF, fontSize:'clamp(34px,5.8vw,62px)', fontWeight:400, letterSpacing:'-0.015em', lineHeight:1.12, margin:'0 0 22px', color:t.ink, transition:'color 0.4s' }}>
+              <h1 style={{ fontFamily:DISPLAY, fontSize:'clamp(40px,6.6vw,80px)', fontWeight:500, letterSpacing:'-0.045em', lineHeight:1.02, margin:'0 0 22px', color:t.ink, transition:'color 0.4s' }}>
                 The Everlasting
                 <br/><span style={mode === 'light'
                   ? { background:`linear-gradient(transparent 56%, ${acc.fill} 56%, ${acc.fill} 92%, transparent 92%)`, padding:'0 6px' }
@@ -163,7 +163,7 @@ export default function LandingPage() {
           transition:'all 0.4s',
         }}>
           <FadeIn>
-            <p style={{ fontFamily:SERIF, fontSize:'clamp(15px,2vw,20px)', fontWeight:400, fontStyle:'italic', color:t.bannerText, margin:0, transition:'color 0.4s' }}>
+            <p style={{ fontFamily:DISPLAY, fontSize:'clamp(15px,2vw,20px)', fontWeight:500, letterSpacing:'-0.02em', color:t.bannerText, margin:0, transition:'color 0.4s' }}>
               Trade Options Without Expiry.
             </p>
           </FadeIn>
@@ -173,7 +173,7 @@ export default function LandingPage() {
         <section style={{ padding:'72px 40px', textAlign:'center' }}>
           <FadeIn>
             <span style={{ fontFamily:MONO, fontSize:10, color:acc.text, letterSpacing:'0.22em', display:'block', marginBottom:18 }}>2Options</span>
-            <p style={{ fontFamily:SERIF, fontSize:'clamp(15px,1.7vw,18px)', fontWeight:400, fontStyle:'italic', color:t.muted, lineHeight:1.85, margin:'0 auto 32px', maxWidth:520, transition:'color 0.4s' }}>
+            <p style={{ fontFamily:DISPLAY, fontSize:'clamp(15px,1.7vw,18px)', fontWeight:400, letterSpacing:'-0.01em', color:t.muted, lineHeight:1.85, margin:'0 auto 32px', maxWidth:520, transition:'color 0.4s' }}>
               Everlasting options give traders long-term options exposure without the effort, risk, or expense of rolling positions.
             </p>
           </FadeIn>
@@ -203,7 +203,7 @@ export default function LandingPage() {
                     <AsciiCanvas scene={f.scene} ink={art.ink} accent={art.accent} dark={art.dark} fontPx={9} offset={i * 1.7}
                       style={{ width:'min(100%, 360px)', height:176, margin:'0 auto', alignItems:'center' }}/>
                   </div>
-                  <h3 style={{ fontFamily:SERIF, fontSize:16, fontWeight:400, color:t.ink, margin:'0 0 8px', transition:'color 0.4s' }}>{f.title}</h3>
+                  <h3 style={{ fontFamily:DISPLAY, fontSize:17, fontWeight:500, letterSpacing:'-0.02em', color:t.ink, margin:'0 0 8px', transition:'color 0.4s' }}>{f.title}</h3>
                   <p style={{ fontSize:13, color:t.dim, lineHeight:1.6, margin:0, transition:'color 0.4s' }}>{f.desc}</p>
                 </div>
               ))}
@@ -216,7 +216,7 @@ export default function LandingPage() {
         {/* CTA */}
         <section style={{ padding:'32px 32px 72px', textAlign:'center' }}>
           <FadeIn>
-            <h2 style={{ fontFamily:SERIF, fontSize:'clamp(24px,4vw,38px)', fontWeight:400, margin:'0 0 16px', color:t.ink, transition:'color 0.4s' }}>
+            <h2 style={{ fontFamily:DISPLAY, fontSize:'clamp(28px,4.4vw,46px)', fontWeight:500, letterSpacing:'-0.04em', lineHeight:1.05, margin:'0 0 16px', color:t.ink, transition:'color 0.4s' }}>
               Start Trading Now
             </h2>
             <p style={{ fontSize:14, color:t.dim, margin:'0 auto 30px', maxWidth:340, lineHeight:1.6, transition:'color 0.4s' }}>
@@ -236,7 +236,7 @@ export default function LandingPage() {
         <footer style={{ borderTop:`1px solid ${t.border}`, padding:'28px 32px', textAlign:'center', transition:'border-color 0.4s' }}>
           <a href="#/" style={{ display:'inline-flex', alignItems:'center', gap:8, textDecoration:'none', marginBottom:14 }}>
             <img src="/logo.png?v=green" alt="" style={{ width:16, height:16, opacity:0.5 }}/>
-            <span style={{ fontFamily:MONO, fontSize:10, fontWeight:600, color:t.ghost, letterSpacing:'0.1em', transition:'color 0.4s' }}>2Options</span>
+            <span style={{ fontFamily:DISPLAY, fontSize:13, fontWeight:600, color:t.ghost, letterSpacing:'-0.02em', transition:'color 0.4s' }}>2Options</span>
           </a>
           <p style={{ fontFamily:MONO, fontSize:9, color:t.footerDim, marginTop:14, opacity:0.6, transition:'color 0.4s' }}>&copy; {new Date().getFullYear()} 2Options Protocol</p>
         </footer>

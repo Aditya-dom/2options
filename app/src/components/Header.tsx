@@ -21,7 +21,7 @@ export default function Header({ tab }: { tab: Tab }) {
           flexShrink: 0, background: t.SURFACE, textDecoration: 'none',
         }}>
           <img src="/logo.png?v=green" alt="2Options" style={{ width: 24, height: 24, borderRadius: 3 }} />
-          <span className="header-brand" style={{ fontFamily: t.MONO, fontSize: 13, fontWeight: 700, color: t.WHITE, letterSpacing: '0.14em' }}>2Options</span>
+          <span className="header-brand" style={{ fontFamily: t.SANS, fontSize: 16, fontWeight: 600, color: t.WHITE, letterSpacing: '-0.03em' }}>2Options</span>
         </a>
 
         <nav className="header-tabs" style={{ display: 'flex' }} aria-label="Screens">
@@ -29,7 +29,7 @@ export default function Header({ tab }: { tab: Tab }) {
             const active = tab === x.id;
             return (
               <a key={x.id} href={href(x.id)} aria-current={active ? 'page' : undefined} style={{
-                display: 'flex', alignItems: 'center', padding: '0 14px', fontFamily: t.MONO, fontSize: 11, letterSpacing: '0.08em',
+                display: 'flex', alignItems: 'center', padding: '0 16px', fontFamily: t.SANS, fontSize: 13.5, letterSpacing: '-0.01em',
                 color: active ? t.ACTIVE_FG : t.GRAY, fontWeight: active ? 600 : 400, textDecoration: 'none', flexShrink: 0, borderRight: `1px solid ${t.LINE}`,
                 background: active ? t.ACTIVE_BG : 'transparent',
                 boxShadow: active ? `inset 0 -2px 0 ${t.ACTIVE_LINE}` : 'none',

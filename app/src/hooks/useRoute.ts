@@ -2,11 +2,11 @@ import { useSyncExternalStore } from 'react';
 
 /** The app's screens. Each has an address: `#/` is the landing page, `#/trade` the desk, and so on. */
 export const TABS = [
-  { id: 'trade', label: 'TRADE' },
-  { id: 'strategy', label: 'STRATEGY' },
-  { id: 'vault', label: 'VAULT' },
-  { id: 'funding', label: 'FUNDING' },
-  { id: 'status', label: 'STATUS' },
+  { id: 'trade', label: 'Trade' },
+  { id: 'strategy', label: 'Strategy' },
+  { id: 'vault', label: 'Vault' },
+  { id: 'funding', label: 'Funding' },
+  { id: 'status', label: 'Status' },
 ] as const;
 
 export type Tab = (typeof TABS)[number]['id'];
