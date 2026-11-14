@@ -1,0 +1,37 @@
+# 2Options agent on an Oracle Always Free VM: quotes, keeper and hedger, behind Caddy (HTTPS).
+services:
+  agent:
+    image: ghcr.io/gks2022004/2options@sha256:e8638089d567c9999c52e56618727ab0f3f52ef0001f5cce05d5498aa4c81a8d
+    restart: always
+    env_file: agent.env
+    environment:
+      HOST: 0.0.0.0
+      PORT: "8787"
+      TWOOPTIONS_DATA_DIR: /data
+      TWOOPTIONS_CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3001}
+      TWOOPTIONS_TRUSTED_PROXIES: 172.30.0.2
+    volumes:
+      - agent-data:/data
+    networks:
+      web:
+        ipv4_address: 172.30.0.3
+    logging:
+      options: { max-size: "20m", max-file: "3" }
+  caddy:
+    image: caddy:2
+    restart: always
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    networks:
+      web:
+        ipv4_address: 172.30.0.2
+volumes:
+  agent-data:
+  caddy-data:
+networks:
+  web:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

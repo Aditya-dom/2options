@@ -61,3 +61,6 @@ archive/
 
 # Internal docs / AI-authored plans + specs — not for public repo
 docs/
+
+# Vercel project link
+.vercel
