@@ -74,7 +74,7 @@ export default function App() {
 
   return (
     <div className={route === 'trade' ? 'app-desk' : undefined} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: t.BG, color: t.WHITE, fontFamily: t.MONO }}>
-      <Header tab={route} />
+      <Header tab={route} wide={route === 'trade'} />
       {isDemo && (
         <div style={{ ...strip(t.ORANGE, 'rgba(255,160,0,0.08)'), display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
           <span>Demo mode: the contract, agent and market are simulated in your browser. Nothing touches a chain.</span>
@@ -108,7 +108,7 @@ export default function App() {
       )}
 
       {route !== 'trade' && (
-        <main style={{ flex: 1, padding: 12, display: 'grid', gap: 12, alignContent: 'start' }}>
+        <main className="app-frame" style={{ flex: 1, padding: 12, display: 'grid', gap: 12, alignContent: 'start' }}>
           {route === 'strategy' && <StrategyBuilder />}
           {route === 'vault' && <VaultPage onFunds={setFunds} />}
           {route === 'status' && <StatusPage />}

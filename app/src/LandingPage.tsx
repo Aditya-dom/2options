@@ -5,6 +5,7 @@ import { useRef, useState } from 'react';
 import { useMountEffect } from './hooks/useMountEffect';
 import { ArrowRight, Sun, Moon } from 'lucide-react';
 import AsciiCanvas from './landing/AsciiCanvas';
+import Band, { BAND_H } from './landing/Band';
 import { paintDivider, paintHero, paintLock, paintOrbit, paintPayoff, paintRidges } from './landing/ascii';
 import { useThemeStore } from './theme';
 
@@ -88,7 +89,7 @@ export default function LandingPage() {
   const [heroFont] = useState(() => (window.innerWidth < 640 ? 8 : 10));
 
   return (
-    <div style={{ background:t.bg, minHeight:'100vh', fontFamily:BODY, color:t.text, transition:'background 0.4s, color 0.4s' }}>
+    <div style={{ background:t.bg, minHeight:'100vh', fontFamily:BODY, color:t.text, transition:'background 0.4s, color 0.4s', overflowX:'hidden' }}>
 
       {/* Grain */}
       <div aria-hidden="true" style={{
@@ -96,6 +97,8 @@ export default function LandingPage() {
         backgroundImage:`url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
         backgroundRepeat:'repeat', backgroundSize:256,
       }}/>
+
+      <Band line={t.border}/>
 
       {/* Contained frame */}
       <div style={{
@@ -105,31 +108,32 @@ export default function LandingPage() {
       }}>
 
         {/* NAV */}
-        <nav style={{ display:'flex', alignItems:'center', padding:'0 32px', height:58, borderBottom:`1px solid ${t.border}`, transition:'border-color 0.4s' }}>
-          <a href="#/" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none' }}>
+        <nav style={{ position:'relative', display:'flex', alignItems:'stretch', height:58, borderBottom:`1px solid ${t.border}`, transition:'border-color 0.4s' }}>
+          {/* The rule under the nav runs on past the frame to the edges of the window. */}
+          <div aria-hidden="true" style={{ position:'absolute', left:'50%', bottom:-1, width:'100vw', height:1, transform:'translateX(-50%)', background:t.border, pointerEvents:'none', transition:'background 0.4s' }}/>
+          <a href="#/" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none', padding:'0 32px' }}>
             <img src="/logo.png?v=green" alt="2Options" style={{ width:24, height:24, borderRadius:3 }}/>
             <span style={{ fontFamily:DISPLAY, fontSize:18, fontWeight:700, letterSpacing:'-0.03em', color:t.text, transition:'color 0.4s' }}>2Options</span>
           </a>
           <div style={{ flex:1 }}/>
-          <div className="lp-nav" style={{ display:'flex', alignItems:'center', gap:4 }}>
-            <button onClick={toggle} className="theme-tog" aria-label="Toggle theme" style={{
-              background:'none', border:`1px solid ${t.border}`, borderRadius:0,
-              width:34, height:34, display:'flex', alignItems:'center', justifyContent:'center',
-              cursor:'pointer', color:t.muted, transition:'all 0.3s', marginLeft:4,
-            }}>
-              {mode === 'light' ? <Moon size={14}/> : <Sun size={14}/>}
-            </button>
-            <a href="#/trade" className="launch-btn" style={{
-              fontFamily:MONO, fontSize:11, fontWeight:600, letterSpacing:'0.04em',
-              padding:'8px 18px', borderRadius:0, textDecoration:'none', marginLeft:4,
-              border:`1px solid ${t.ink}`, color:t.ink, background:'transparent', transition:'all 0.3s',
-              display:'inline-flex', alignItems:'center', gap:6,
-            }}>Launch app <ArrowRight size={12} strokeWidth={2.5}/></a>
-          </div>
+          {/* Each control is a cell of the frame, divided from the next by a rule. */}
+          <button onClick={toggle} className="theme-tog" aria-label="Toggle theme" style={{
+            background:'none', border:'none', borderLeft:`1px solid ${t.border}`, borderRadius:0,
+            width:58, display:'flex', alignItems:'center', justifyContent:'center',
+            cursor:'pointer', color:t.muted, transition:'all 0.3s',
+          }}>
+            {mode === 'light' ? <Moon size={15}/> : <Sun size={15}/>}
+          </button>
+          <a href="#/trade" className="launch-btn" style={{
+            fontFamily:MONO, fontSize:12, fontWeight:600, letterSpacing:'0.04em',
+            padding:'0 28px', borderRadius:0, textDecoration:'none',
+            borderLeft:`1px solid ${t.border}`, color:t.ink, background:'transparent', transition:'all 0.3s',
+            display:'inline-flex', alignItems:'center', gap:8,
+          }}>Launch app <ArrowRight size={13} strokeWidth={2.5}/></a>
         </nav>
 
         {/* HERO */}
-        <section style={{ position:'relative', minHeight:'calc(100vh - 58px)', overflow:'hidden' }}>
+        <section style={{ position:'relative', minHeight:`calc(100vh - ${58 + BAND_H + 1}px)`, overflow:'hidden' }}>
           {/* An infinity sign as a lit solid, turning under the headline, drawn in characters */}
           <AsciiCanvas scene={paintHero} ink={art.ink} accent={art.accent} dark={art.dark} fontPx={heroFont} interactive
             style={{ position:'absolute', inset:0 }}/>
@@ -243,12 +247,14 @@ export default function LandingPage() {
 
       </div>
 
+      <Band edge="bottom" line={t.border}/>
+
       {/* STYLES */}
       <style>{`
         html { scroll-behavior:smooth; }
         .nav-link:hover { color:${acc.text} !important; }
-        .launch-btn:hover { background:${acc.fill} !important; color:${acc.ink} !important; border-color:${acc.fill} !important; }
-        .theme-tog:hover { border-color:${acc.text} !important; color:${acc.text} !important; }
+        .launch-btn:hover { background:${acc.fill} !important; color:${acc.ink} !important; }
+        .theme-tog:hover { color:${acc.text} !important; }
         .cta-btn:hover { background:${acc.fill} !important; color:${acc.ink} !important; }
         .partner:hover { color:${acc.text} !important; }
         .f-link:hover { color:${acc.text} !important; }

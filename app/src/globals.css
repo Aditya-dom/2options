@@ -41,20 +41,32 @@ button:focus-visible, input:focus-visible {
   .trade-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* On a phone the header is two rows: brand, status and wallet on top, the screens below. In one
-   row the wallet button sat off screen to the right, reachable only by scrolling the header. */
+/* The page's frame: content sits between two rules with a margin of page either side, and the
+   header's rules run on past it to the window's edges. The trade desk needs the whole window,
+   so its frame (`.wide`) is the window. */
+.app-frame { width: 100%; max-width: 1180px; margin-left: auto; margin-right: auto; border-left: 1px solid var(--line, #000); border-right: 1px solid var(--line, #000); }
+.app-frame.wide { max-width: none; border-left: 0; border-right: 0; }
+@media (max-width: 1181px) { .app-frame { border-left: 0; border-right: 0; } }
+
+/* The header's second row: the screens, centred, each a cell. */
+.header-tabs { justify-content: center; overflow-x: auto; scrollbar-width: none; }
+.header-tabs::-webkit-scrollbar { display: none; }
+.header-tab:hover { color: var(--text) !important; }
+.header-cell:hover { color: var(--accent) !important; }
+.header-wallet:hover:not(:disabled) { filter: brightness(1.08); }
+@media (max-width: 899px) {
+  .header-tabs { justify-content: flex-start; }
+  .header-tab { min-width: 0 !important; flex: 1 0 auto; padding: 0 14px !important; }
+}
 @media (max-width: 639px) {
   .header-brand, .header-account { display: none; }
-  .header-bar { flex-wrap: wrap; height: auto !important; overflow-x: visible !important; }
-  .header-bar > * { height: 40px; }
-  .header-bar > div { padding-left: 8px !important; padding-right: 8px !important; }
-  .header-tabs { order: 1; flex: 0 0 100%; overflow-x: auto; border-top: 1px solid var(--line, #000); scrollbar-width: none; }
-  .header-tabs::-webkit-scrollbar { display: none; }
-  .header-tabs > a { flex: 1 0 auto; justify-content: center; }
+  .header-tab svg { display: none; }
 }
-/* The network is also named in the footer; on a phone the badge would push the wallet button onto a row of its own. */
+/* The network is also named in the footer; on a phone the badge would crowd the wallet button. */
 @media (max-width: 439px) {
   .header-net { display: none !important; }
+  .header-wallet { padding: 0 12px !important; }
+  .header-wallet svg { display: none; }
 }
 
 /* The trade screen fills the window exactly, its panels scrolling inside it. On a narrow screen

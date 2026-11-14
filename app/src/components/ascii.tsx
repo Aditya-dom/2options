@@ -130,3 +130,79 @@ export function Pulse({ alive, color, cells = 28 }: { alive: boolean; color?: st
     : '▁'.repeat(cells);
   return <span aria-hidden style={{ fontFamily: GLYPH_FONT, fontSize: 15, lineHeight: 1, letterSpacing: '-0.04em', color: color ?? t.ACCENT, userSelect: 'none' }}>{line}</span>;
 }
+
+/** Pixel drawings for the header's tabs, eleven by nine: `#` is ink, `+` the accent, `.` nothing. */
+export const TAB_ICONS: Record<string, readonly string[]> = {
+  // Three candles; the middle one is the one being traded.
+  trade: [
+    '........#..',
+    '.#......#..',
+    '.#..+..###.',
+    '###.+..###.',
+    '###+++.###.',
+    '###+++..#..',
+    '.#.+++..#..',
+    '.#..+......',
+    '....+......',
+  ],
+  // A straddle's payoff across its break-even line.
+  strategy: [
+    '...........',
+    '#.........#',
+    '.#.......#.',
+    '..#.....#..',
+    '...#...#...',
+    '+.+.#.#.+.+',
+    '.....#.....',
+    '...........',
+    '...........',
+  ],
+  // A safe and its dial.
+  vault: [
+    '###########',
+    '#.........#',
+    '#...+++...#',
+    '#..+...+..#',
+    '#..+.#.+..#',
+    '#..+...+..#',
+    '#...+++...#',
+    '###########',
+    '.##.....##.',
+  ],
+  // A clock: funding settles on the hour.
+  funding: [
+    '...#####...',
+    '..#.....#..',
+    '.#...+...#.',
+    '.#...+...#.',
+    '.#...+++.#.',
+    '.#.......#.',
+    '..#.....#..',
+    '...#####...',
+    '...........',
+  ],
+  // A heartbeat.
+  status: [
+    '...........',
+    '.....#.....',
+    '.....#.....',
+    '....#.#....',
+    '+++.#.#.+++',
+    '...#..#.#..',
+    '.......#...',
+    '...........',
+    '...........',
+  ],
+};
+
+/** One of the tab drawings, each cell a square of `px` pixels. */
+export function TabIcon({ name, ink, accent, px = 3 }: { name: string; ink: string; accent: string; px?: number }) {
+  const rows = TAB_ICONS[name];
+  if (!rows) return null;
+  return (
+    <svg aria-hidden width={rows[0].length * px} height={rows.length * px} viewBox={`0 0 ${rows[0].length} ${rows.length}`} shapeRendering="crispEdges" style={{ flexShrink: 0 }}>
+      {rows.flatMap((row, y) => row.split('').map((c, x) => (c === '.' ? null : <rect key={`${x}.${y}`} x={x} y={y} width={1} height={1} fill={c === '+' ? accent : ink} />)))}
+    </svg>
+  );
+}
+
