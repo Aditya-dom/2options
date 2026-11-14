@@ -1,11 +1,12 @@
 import { describe, expect, test } from 'bun:test';
 import {
-  ACC_DIM, clear, DIM, GLYPHS, makeGrid, NONE, paintDivider, paintHero, paintLock, paintOrbit, paintPayoff,
+  ACC_DIM, clear, DIM, GLYPHS, makeGrid, NONE, paintBand, paintDivider, paintHero, paintLock, paintOrbit, paintPayoff,
   paintRidges, textBottom, TONES, type Grid, type Pointer, type Scene,
 } from './ascii';
 
 const SCENES: Record<string, Scene> = {
   hero: paintHero, orbit: paintOrbit, ridges: paintRidges, payoff: paintPayoff, lock: paintLock, divider: paintDivider,
+  band: paintBand,
 };
 /** Grids the page really makes (hero on a desktop and a phone, a feature drawing, a divider) and some degenerate ones. */
 const SIZES: [number, number, number, number][] = [
@@ -115,3 +116,33 @@ describe('labels', () => {
     expect(rowText(g, 1).trim()).not.toBe('');
   });
 });
+
+describe('band', () => {
+  /** The band as the page makes it: six rows of small cells across a desktop and a phone. */
+  const BANDS: [number, number, number, number][] = [[360, 6, 4, 7], [97, 6, 4, 7]];
+
+  test('the sea runs from edge to edge: every column has water on the bottom row, at every moment', () => {
+    for (const size of BANDS) for (let t = 0; t < 120; t += 1.7) {
+      const g = paint(paintBand, size, t);
+      const bottom = (size[1] - 1) * size[0];
+      for (let c = 0; c < size[0]; c++) expect(g.tones[bottom + c]).not.toBe(NONE);
+    }
+  });
+
+  test('the top row is mostly sky, so the band reads as swells and not as a filled bar', () => {
+    for (let t = 0; t < 60; t += 2.3) {
+      const g = paint(paintBand, BANDS[0], t);
+      const wet = Array.from(g.tones.slice(0, 360)).filter(tone => tone !== NONE).length;
+      expect(wet).toBeLessThan(360 * 0.5);
+    }
+  });
+
+  test('a light travels along the near crest and leaves the page before it comes round again', () => {
+    const lit = (t: number) => Array.from(paint(paintBand, BANDS[0], t).tones).filter(tone => tone >= ACC_DIM).length;
+    expect(lit(10)).toBeGreaterThan(20); // mid-page
+    expect(lit(0.5)).toBe(0); // not on yet: it starts off the left edge
+    const first = (t: number) => { const g = paint(paintBand, BANDS[0], t); for (let c = 0; c < 360; c++) for (let r = 0; r < 6; r++) if (g.tones[r * 360 + c] >= ACC_DIM) return c; return -1; };
+    expect(first(12)).toBeGreaterThan(first(8)); // it moves to the right
+  });
+});
+

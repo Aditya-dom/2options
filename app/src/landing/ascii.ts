@@ -562,3 +562,45 @@ export const paintDivider: Scene = (g, t) => {
     put(g, head - j, row, glyph, j < 3 ? ACC_BRIGHT : j < 8 ? ACC : ACC_DIM);
   }
 };
+
+/* ─────────────────────────────────────────────────────────────────────────────────────────────
+   Band: a strip of sea across the page, two swells passing each other, drawn in small characters
+   ───────────────────────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The page's border. A near swell, filled and brightest along its crest, travels one way in
+ * front of a fainter one going the other. The edge of each is drawn by how much of a cell the
+ * water covers, so the outline is smooth even though the cells are coarse. A light runs along
+ * the near crest.
+ */
+export const paintBand: Scene = (g, t) => {
+  const { cols, rows, cw, ch } = g;
+  const W = cols * cw;
+  const H = rows * ch;
+  const near = (x: number) => H * 0.56 + H * 0.27 * Math.sin((TAU * (x - t * ch * 1.1)) / (H * 3.4)) + H * 0.07 * Math.sin((TAU * (x + t * ch * 0.5)) / (H * 1.3));
+  const far = (x: number) => H * 0.4 + H * 0.24 * Math.sin((TAU * (x + t * ch * 0.7)) / (H * 2.3) + 1.9);
+  const tail = Math.max(cw * 16, W * 0.12);
+  const head = (((t * 0.04) % 1) * 1.3 - 0.15) * W;
+
+  for (let c = 0; c < cols; c++) {
+    const x = (c + 0.5) * cw;
+    const yn = near(x);
+    const yf = far(x);
+    const behind = head - x;
+    const lit = behind >= 0 && behind < tail;
+    for (let r = 0; r < rows; r++) {
+      const bottom = (r + 1) * ch;
+      const covered = clamp01((bottom - yn) / ch); // how much of this cell the near swell fills
+      if (covered > 0.12) {
+        const depth = Math.max(0, (r + 0.5) * ch - yn) / H;
+        const ink = covered * (0.96 - 0.62 * depth);
+        // The light sits on the crest: the top two rows of water.
+        if (lit && depth < (1.6 * ch) / H) set(g, c, r, shadeGlyph(Math.max(ink, 0.3)), behind < tail * 0.3 ? ACC_BRIGHT : behind < tail * 0.7 ? ACC : ACC_DIM);
+        else set(g, c, r, shadeGlyph(ink), inkTone(0.16 + 0.84 * ink));
+        continue;
+      }
+      const back = clamp01((bottom - yf) / ch);
+      if (back > 0.2) set(g, c, r, back < 0.6 ? '.' : ':', DIM);
+    }
+  }
+};
