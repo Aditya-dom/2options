@@ -17,6 +17,8 @@ Rules it follows:
   does not list, a venue price far from the contract's spot, or an order whose fate is unknown.
   Holding the last hedge is the safe side: with a stale spot the contract refuses trades, so the
   book it hedges cannot change either.
+- When the book is empty the hedge is closed completely, down to the last lot, rather than left
+  inside the deadband.
 - Orders never rest. Each is immediate-or-cancel with a price limit and an expiry, so a request
   that is delayed in transit is refused by the venue instead of filling late, and the next pass
   works from the position actually held.
@@ -149,6 +151,15 @@ def decide(
     capped = max(-limit, min(limit, target))
     note = "" if capped == target else " (target capped at the position limit)"
     gap = capped - float(position)
+    if capped == 0 and net_gamma == 0 and position != 0:
+        # Nothing is left to hedge, so nothing is gained by tolerating a remainder: close all of
+        # it. The venue accepts a reduce-only order that closes a whole position even under its
+        # minimum order size (checked on testnet with an 8.52 USD close), so no dust is left.
+        size = min(abs(position), floor_size(Decimal(repr(cfg.max_order_usd / m)), sz_decimals))
+        signed = -size if position > 0 else size
+        return Decision(
+            "trade", "closing the hedge: the book is flat", signed, True, 0.0, basis, 0.0
+        )
     dollar_band = max(cfg.deadband_usd, cfg.min_order_usd) / m
     gamma_band = abs(net_gamma) * m * cfg.rehedge_move_bps / 10_000
     band = max(dollar_band, gamma_band)

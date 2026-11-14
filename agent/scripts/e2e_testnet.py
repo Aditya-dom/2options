@@ -6,8 +6,9 @@ transactions, from a throwaway account.
 Needs: agent/.env (contract and token ids), the agent running on :8787, and the account's key in
 ~/.near-credentials/testnet/<account>.json (as `near account create-account ... save-to-legacy-keychain`
 leaves it). The account pays its own gas and mints its own test USDC, so nothing here uses the
-owner or keeper key. Not covered here: liquidation (scripts/liquidation_demo.py runs one live) and
-LP claim (1 h cooldown).
+owner or keeper key. Not covered here: liquidation (scripts/liquidation_demo.py runs one live).
+The LP claim has a one-hour cooldown: run the script again with the same account an hour or more
+later and it collects the claim the first run left (one more check).
 """
 
 from __future__ import annotations
@@ -124,7 +125,12 @@ def main() -> int:
     )
     spot = int(agent("/spot")["ETH"]["price"]) / 1e8
     chain = {r["series"]: r for r in agent("/chain")}
-    strike = round(spot / 50) * 50
+    # The listed strike nearest spot that has a neighbour on each side (for the two-leg trade
+    # below). The grid's spacing depends on the deployment, so it is read, not assumed.
+    strikes = sorted({int(s.split("-")[1]) for s in chain if s.startswith("ETH-")})
+    below = {k: strikes[i - 1] for i, k in enumerate(strikes) if 0 < i < len(strikes) - 1}
+    above = {k: strikes[i + 1] for i, k in enumerate(strikes) if 0 < i < len(strikes) - 1}
+    strike = min(below or strikes, key=lambda k: abs(k - spot))
     call, put = f"ETH-{strike}-C", f"ETH-{strike}-P"
     check(
         call in chain and put in chain,
@@ -133,8 +139,10 @@ def main() -> int:
     )
     c = chain[call]
     check(
-        int(c["bid"]) < int(c["mark"]) < int(c["ask"]) and 0.2 < c["delta"] < 0.8,
-        "ATM call: bid < mark < ask, delta near 0.5",
+        # Within one strike of the money. On a deployment with a short funding interval the
+        # options are short-dated and delta is steep, so the bounds are wide.
+        int(c["bid"]) < int(c["mark"]) < int(c["ask"]) and 0.1 < c["delta"] < 0.9,
+        "nearest-strike call: bid < mark < ask, delta between 0.1 and 0.9",
         f"{int(c['bid']) / 1e6:.2f} / {int(c['ask']) / 1e6:.2f}, delta {c['delta']}",
     )
 
@@ -288,7 +296,7 @@ def main() -> int:
     )
 
     # Two legs in one transaction, as the strategy builder sends them.
-    lo, hi = f"ETH-{strike - 50}-P", f"ETH-{strike + 50}-C"
+    lo, hi = f"ETH-{below[strike]}-P", f"ETH-{above[strike]}-C"
     legs = [quote(hi, "Buy", ONE), quote(lo, "Buy", ONE)]
     acct.send(
         contract,
@@ -341,6 +349,18 @@ def main() -> int:
     check(wallet() == w + 100 * USDC, "withdraw pays USDC to the wallet")
 
     # -- LP vault ---------------------------------------------------------------------------
+    # A claim left by an earlier run of this script (an hour or more ago) has matured: collect
+    # it first, because requesting another redemption below restarts its cooldown.
+    old_claim = view(contract, "get_lp_claim", {"account_id": me})
+    if old_claim is not None and int(old_claim[1]) <= time.time_ns():
+        w = wallet()
+        acct.call(contract, "lp_claim", {}, gas=100 * near.TGAS)
+        check(
+            wallet() == w + int(old_claim[0])
+            and view(contract, "get_lp_claim", {"account_id": me}) is None,
+            "a matured LP claim pays out in full and is cleared",
+            f"{int(old_claim[0]) / 1e6:.6f} USDC",
+        )
     shares0 = int(view(contract, "get_lp_shares", {"account_id": me}))
     transfer_call(1_000, "lp")
     shares = int(view(contract, "get_lp_shares", {"account_id": me})) - shares0

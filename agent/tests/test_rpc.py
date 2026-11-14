@@ -105,6 +105,8 @@ class FakeRpc:
         self.methods: list[str] = []
 
     def __call__(self, url: str, method: str, params: Any, timeout: float) -> Any:
+        if method == "block":  # the final block a transaction is anchored to (tests/test_near.py)
+            return {"header": {"hash": near.b58encode(bytes(32))}}
         self.methods.append(method)
         if method == "query":
             return {"nonce": 10, "block_hash": near.b58encode(bytes(32))}

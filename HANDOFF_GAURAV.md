@@ -54,6 +54,7 @@ New: `agent/twooptions_agent/hedger.py`, `hyperliquid.py`, `keccak.py`; `GET /he
 - **No new dependency.** Hyperliquid signs orders with secp256k1 over an EIP-712 digest of a Keccak-256 hash of msgpack. None of that is in the standard library, so the subset an order needs is written out and checked byte for byte against the official SDK on 48 signing vectors. The SDK is only used to generate those vectors.
 - **It is trusted and off chain.** The hedge sits in an exchange account we hold. Its P&L is not in vault equity or the share price. The app and the README say this wherever the hedge is shown. It uses ordinary Hyperliquid API signing, not NEAR Chain Signatures, and the storyboard is corrected to match.
 - **It fails closed.** No order when the contract's spot is stale, the venue cannot be read, the venue's price is more than 500 bps from the contract's spot, or an earlier order's fate is unknown. Orders are immediate-or-cancel with an 8 second expiry, so nothing rests and a delayed request cannot fill late. The position is always read back from the venue.
+- **It closes completely.** When the book is empty the hedge is closed with a reduce-only order whatever its size (Hyperliquid accepts that even under its 10 USD minimum), so no remainder is left on the venue.
 - **The no-trade band follows gamma.** With a fixed 25 USD band it made 41 fills in 21 minutes hedging three calls worth 11 USD. The band is now the larger of 25 USD and the delta drift of a 0.5% move in spot (`HEDGE_REHEDGE_MOVE_BPS`); the same test then made one order.
 - `/inventory` now uses each strike's quoted delta and reports `net_gamma`. It used the at-the-money vol for every strike, so the hedge target disagreed with `/chain`.
 
@@ -78,17 +79,28 @@ The rules are one pure function (`app/src/lib/status.ts`) with a test per rule. 
 | | |
 |---|---|
 | Contract | 84 unit tests. The 2,000-step random run now also asserts that no completed buy leaves negative cash and that only an account with open positions can have a negative balance |
-| Agent | 196 tests, `ruff`, `mypy --strict`. Includes a randomized run of the hedger (random book, price walk, stale spots, venue failures, timeouts, refusals, partial fills) that checks its rules on every pass |
+| Agent | 199 tests, `ruff`, `mypy --strict`. Includes a randomized run of the hedger (random book, price walk, stale spots, venue failures, timeouts, refusals, partial fills) that checks its rules on every pass |
 | App | 79 tests, type-check, build |
 | Guards | Each new check was removed in turn to confirm a test fails: 5 in the contract, about 35 in the agent, 16 in the status rules |
 | Live, second deployment | `e2e_testnet.py` 34 of 34; `liquidation_demo.py` 10 of 10; the hedge loop (open, hold through noise, flatten); `hedge_smoke.py --trade` 8 of 8; the status page in a browser, operational and in an outage |
 
-**Not verified:** the liquidation of a short on testnet (unit-tested only; it needs a price move), LP claim (one-hour cooldown), and anything at all on `contract.twooptions.testnet` since Nov 13.
+Two paths that were unverified until today, both on the second deployment:
+
+- **LP claim.** A claim of 499.999152 USDC requested an hour earlier paid out in full and was cleared. `e2e_testnet.py` now collects a matured claim when rerun with the same account an hour or more later.
+- **Liquidating a short**, with a price we set. A short needs the price to rise, so I ran the real `Keeper` class with its price source replaced, raised the price 9% in two steps (inside the contract's jump limit), and it liquidated the short once its health reached 0.999 ([tx](https://testnet.nearblocks.io/txns/93SGMKhbZqDMqCMC5236Kxxxp7XNYtPqZSSKTLSbedbC)): fee on spot notional, short closed at intrinsic, balance exact to the micro. The market price was restored afterwards. This tests the code path with real transactions; it is not a market-driven liquidation, and I would not run it on a deployment other people use.
+
+**Not verified:** a market-driven liquidation of a short, the app's trading screens driven by a real wallet in a browser (trades ran through scripts; the Status and Vault pages were checked in a browser), and anything at all on `contract.twooptions.testnet` since Nov 13.
+
+### Two changes in files that are yours
+
+- **`near.py`: transactions are anchored to a final block.** `send` took the block hash from the access-key query, which answers with an optimistic block. A node without that block refuses the transaction as `Expired`. It happened twice in the keeper's log today and once in a test, after FastNEAR began rate-limiting my machine and requests started failing over to another provider. The nonce still comes from the optimistic query; the anchor is a final block's hash, cached for a minute and dropped after an `Expired`.
+- **`e2e_testnet.py` reads the strike grid** instead of rounding spot to 50, and its delta bound for the nearest strike is 0.1 to 0.9, because on a deployment with a short funding interval the options are short-dated and delta is steep.
 
 ### Smaller things
 
 - `HOST` and `PORT` in `agent/.env` were ignored, because the defaults were read before the file was loaded. Fixed.
 - `e2e_testnet.py` has one more check (a buy on credit is refused), retries when the agent stalls on a slow RPC, and borrows a quote for the keeper account instead of the owner, which only worked when the two were the same account.
+- Public RPC endpoints rate-limit. Put a healthy one first in `NEAR_RPC_URL`: a rate-limited endpoint is retried with backoff before the next is tried, which delays price posts enough for quotes to be refused as stale. Today `near-testnet.drpc.org` then `test.rpc.fastnear.com` worked, and `rpc.testnet.near.org` answered 429 all day.
 - If the agent runs on a laptop, keep it awake: `caffeinate -i make near-agent`. Mine slept for seven minutes mid-test. The spot went stale, trading stopped and the hedger held its position, which is the intended behaviour, but nothing runs while the machine sleeps.
 - The second deployment is `contract.e2e-owner-459fc447.testnet` with `usdc.e2e-owner-459fc447.testnet`, funding every 3 minutes so settlements and liquidations can be watched. It only works while my agent is running. Its keys are not in the repo; ask me if you want them.
 
