@@ -2,8 +2,13 @@
 agent has quoted (the keeper's liquidation watch list) and the hedger's orders (for `/hedge`).
 
 NEAR RPC cannot list past events and the contract cannot enumerate accounts, so the agent keeps
-both. Losing the files loses history and the watch list, never money: the contract's own state
-is the source of truth for every balance.
+both. Losing the files loses history and the watch list, never a balance: the contract's own
+state is the source of truth for those. An account missing from the watch list is not scanned
+for liquidation until it asks for a quote again, so keep the data directory on a volume that
+survives a redeploy.
+
+The two logs are append-only and bounded: once a file holds twice what is kept in memory it is
+rewritten with the newest half, so a process that runs for months does not fill its disk.
 """
 
 from __future__ import annotations
@@ -28,6 +33,7 @@ class Store:
         self._funding_path: Path | None = None
         self._takers_path: Path | None = None
         self._hedge_path: Path | None = None
+        self._lines: dict[Path, int] = {}  # lines in each log file
         if data_dir is not None:
             data_dir.mkdir(parents=True, exist_ok=True)
             self._funding_path = data_dir / "funding.jsonl"
@@ -35,16 +41,43 @@ class Store:
             self._hedge_path = data_dir / "hedge.jsonl"
             self._load()
 
-    @staticmethod
-    def _read_lines(path: Path, keep: int) -> list[dict[str, Any]]:
+    def _read_lines(self, path: Path, keep: int) -> list[dict[str, Any]]:
         rows: list[dict[str, Any]] = []
         if path.exists():
-            for line in path.read_text().splitlines():
-                try:
-                    rows.append(json.loads(line))
-                except ValueError:
-                    continue  # a torn last line after a crash
-        return rows[-keep:]
+            with path.open() as f:
+                for line in f:
+                    try:
+                        rows.append(json.loads(line))
+                    except ValueError:
+                        continue  # a torn last line after a crash
+                    del rows[: -keep * 2]  # never hold more than the file is allowed to
+        self._lines[path] = len(rows)
+        rows = rows[-keep:]
+        if self._lines[path] > keep:
+            self._rewrite(path, rows)
+        return rows
+
+    def _rewrite(self, path: Path, rows: list[dict[str, Any]]) -> None:
+        """Replace a log with `rows`, atomically: a crash leaves the old file or the new one."""
+        tmp = path.with_suffix(".tmp")
+        with tmp.open("w") as f:
+            f.writelines(json.dumps(r, separators=(",", ":")) + "\n" for r in rows)
+        tmp.replace(path)
+        self._lines[path] = len(rows)
+
+    def _append(
+        self, path: Path | None, rows: list[dict[str, Any]], keep: int, event: dict[str, Any]
+    ) -> None:
+        """Add `event` to a log in memory and on disk. The caller holds the lock."""
+        rows.append(event)
+        del rows[:-keep]
+        if path is None:
+            return
+        with path.open("a") as f:
+            f.write(json.dumps(event, separators=(",", ":")) + "\n")
+        self._lines[path] = self._lines.get(path, 0) + 1
+        if self._lines[path] > keep * 2:
+            self._rewrite(path, rows)
 
     def _load(self) -> None:
         assert self._funding_path and self._takers_path and self._hedge_path
@@ -60,11 +93,7 @@ class Store:
 
     def add_funding(self, event: dict[str, Any]) -> None:
         with self._lock:
-            self._funding.append(event)
-            del self._funding[:-MAX_FUNDING_IN_MEMORY]
-            if self._funding_path:
-                with self._funding_path.open("a") as f:
-                    f.write(json.dumps(event, separators=(",", ":")) + "\n")
+            self._append(self._funding_path, self._funding, MAX_FUNDING_IN_MEMORY, event)
 
     def funding_history(self, series: str | None, limit: int) -> list[dict[str, Any]]:
         """Newest first."""
@@ -77,11 +106,7 @@ class Store:
     def add_hedge_order(self, event: dict[str, Any]) -> None:
         """Append-only record of every order the hedger sent, whatever came of it."""
         with self._lock:
-            self._hedge.append(event)
-            del self._hedge[:-MAX_HEDGE_IN_MEMORY]
-            if self._hedge_path:
-                with self._hedge_path.open("a") as f:
-                    f.write(json.dumps(event, separators=(",", ":")) + "\n")
+            self._append(self._hedge_path, self._hedge, MAX_HEDGE_IN_MEMORY, event)
 
     def hedge_orders(self, limit: int) -> list[dict[str, Any]]:
         """Newest first."""

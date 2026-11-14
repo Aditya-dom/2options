@@ -116,6 +116,7 @@ export function parseHealth(j: HealthJson): AgentHealth {
       spotHold: k.last_spot_hold,
       liquidations: k.liquidations,
       liquidated: (k.liquidated ?? []).map(x => ({ account: x.account, txHash: x.tx_hash, atMs: nsToMsNum(x.ts_ns) })),
+      watch: typeof k.watch?.accounts === 'number' ? { accounts: k.watch.accounts, withPositions: k.watch.with_positions, behindS: k.watch.behind_s } : null,
       errors: k.errors,
     },
     hedger: j.hedger ?? false,

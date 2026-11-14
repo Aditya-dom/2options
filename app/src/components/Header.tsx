@@ -15,7 +15,7 @@ export default function Header({ tab }: { tab: Tab }) {
 
   return (
     <header style={{ background: t.PANEL, borderBottom: `1px solid ${t.LINE}`, flexShrink: 0, userSelect: 'none' }}>
-      <div style={{ display: 'flex', alignItems: 'stretch', height: 40, overflowX: 'auto', whiteSpace: 'nowrap' }}>
+      <div className="header-bar" style={{ display: 'flex', alignItems: 'stretch', height: 40, overflowX: 'auto', whiteSpace: 'nowrap' }}>
         <a href={href('landing')} style={{
           display: 'flex', alignItems: 'center', gap: 6, padding: '0 12px', borderRight: `1px solid ${t.LINE}`,
           flexShrink: 0, background: t.SURFACE, textDecoration: 'none',
@@ -24,7 +24,7 @@ export default function Header({ tab }: { tab: Tab }) {
           <span className="header-brand" style={{ fontFamily: t.MONO, fontSize: 13, fontWeight: 700, color: t.WHITE, letterSpacing: '0.14em' }}>2Options</span>
         </a>
 
-        <nav style={{ display: 'flex' }} aria-label="Screens">
+        <nav className="header-tabs" style={{ display: 'flex' }} aria-label="Screens">
           {TABS.map(x => {
             const active = tab === x.id;
             return (
@@ -41,7 +41,7 @@ export default function Header({ tab }: { tab: Tab }) {
         <div style={{ flex: 1, minWidth: 8 }} />
 
         <div style={{ ...cell, padding: '0 10px' }}>
-          <Badge color={isDemo ? t.ORANGE : t.ACCENT}>{isDemo ? 'DEMO' : config.network.toUpperCase()}</Badge>
+          <span className="header-net" style={{ display: 'flex' }}><Badge color={isDemo ? t.ORANGE : t.ACCENT}>{isDemo ? 'DEMO' : config.network.toUpperCase()}</Badge></span>
           <AgentBadge />
           <FaucetButton badge />
         </div>

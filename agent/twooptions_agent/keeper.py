@@ -5,6 +5,11 @@ Three jobs on one thread, each isolated: a failure in one is logged and retried 
 turn and never stops the others. All of them go through one NEAR account, one transaction at a
 time, because access-key nonces must increase one by one.
 
+No job may hold the thread for long, because the spot must be posted every few seconds or the
+contract stops trading. Funding settles one series per pass, and the liquidation scan reads
+accounts for a bounded time per pass: the contract cannot list its accounts, so each one is a
+separate RPC read, and a long watch list is worked through over several passes.
+
 What the keeper can and cannot do: it relays messages signed by the agent key. The contract
 checks every signature and bounds every number, so a keeper bug can delay a spot or a funding
 settlement but cannot move a price outside the contract's limits.
@@ -15,6 +20,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -60,7 +66,19 @@ class KeeperConfig:
     #: post sent: posts go out without waiting for their outcome, so a refused one is only
     #: visible this way.
     resync_after_intervals: float = 4.0
-    liquidation_interval_s: float = 15.0
+    #: How often the liquidation scan gets a turn, and how long a turn may spend reading
+    #: accounts. Whatever is still due waits for the next turn, most urgent first.
+    liquidation_interval_s: float = 3.0
+    liquidation_budget_s: float = 2.0
+    #: An account with open positions is read again after this long,
+    recheck_s: float = 15.0
+    #: on every turn once its equity is within this factor of the point of liquidation,
+    near_factor: float = 1.25
+    #: and after this long when it holds nothing: it has to trade before it can be liquidated.
+    recheck_idle_s: float = 120.0
+    #: An account this agent quoted may be about to trade, so for this long it is read as if it
+    #: held positions.
+    quoted_watch_s: float = 180.0
     #: Wait this long into a new epoch before settling it, so a slightly fast local clock cannot
     #: name an epoch the chain has not reached ("epoch is not current").
     settle_delay_s: float = 15.0
@@ -74,6 +92,9 @@ class KeeperStatus:
     liquidations: int = 0
     #: The most recent liquidations, newest first: account, who sent it, transaction and when.
     liquidated: list[dict[str, str]] = field(default_factory=list)
+    #: The liquidation scan: accounts watched, how many hold positions, how many reads are
+    #: due, and how late the most overdue read of an account with positions is, in seconds.
+    watch: dict[str, float] = field(default_factory=dict)
     errors: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, object]:
@@ -83,8 +104,26 @@ class KeeperStatus:
             "last_funding_epoch": dict(self.last_funding_epoch),
             "liquidations": self.liquidations,
             "liquidated": [dict(x) for x in self.liquidated],
+            "watch": dict(self.watch),
             "errors": dict(self.errors),
         }
+
+
+#: How urgently an account is read: close to liquidation, holding positions (or not read yet),
+#: holding nothing.
+NEAR, OPEN, IDLE = 0, 1, 2
+#: A long has no requirement to measure against; under this much equity (USDC micros) it is
+#: treated as close to liquidation.
+NEAR_EQUITY = 1_000_000
+
+
+@dataclass
+class Watch:
+    """One account on the liquidation watch list."""
+
+    due: float = 0.0  # when to read it next, on the keeper's clock; 0 is "now"
+    tier: int = OPEN
+    quoted: float = float("-inf")  # when this agent last quoted it
 
 
 def pending_funding(positions: list[dict[str, Any]], snap: Snapshot) -> int:
@@ -112,6 +151,7 @@ class Keeper:
         feed: SpotFeed,
         store: Store,
         cfg: KeeperConfig | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ):
         self.contract_id = contract_id
         self.sender = sender
@@ -127,6 +167,10 @@ class Keeper:
         #: Series whose last settlement attempt failed, by epoch: tried after the others, so a
         #: series that keeps failing cannot hold the rest back.
         self._funding_failed: dict[str, int] = {}
+        self._clock = clock
+        self._watch: dict[str, Watch] = {}
+        self._watch_lock = threading.Lock()
+        self._report_watch()  # so /health has the fields before the first turn of the scan
 
     # -- spot ---------------------------------------------------------------------------------
 
@@ -260,60 +304,132 @@ class Keeper:
 
     # -- liquidations -------------------------------------------------------------------------
 
+    def touch(self, account_id: str) -> None:
+        """This agent has just quoted `account_id`: read it soon, and keep reading it as if it
+        held positions for a while, because a trade may follow. Safe from any thread."""
+        with self._watch_lock:
+            w = self._watch.setdefault(account_id, Watch())
+            w.quoted = self._clock()
+            if w.tier == IDLE:
+                w.tier = OPEN
+                w.due = min(w.due, w.quoted + self.cfg.recheck_s)
+
     def tick_liquidations(self) -> None:
+        """One turn of the scan: read the accounts that are due, most urgent first, until the
+        turn's time is up. An account whose read or liquidation fails is tried again on its
+        next turn; the first such error is raised once the others have had theirs."""
         snap = self.cache.get()
-        ratio = snap.params.liquidation_ratio_bps
-        for account_id in self.store.takers():
-            if account_id == self.sender.account_id:
-                continue
-            acct = self.cache.view("get_account", {"account_id": account_id})
-            if acct is None:
-                self.store.remove_taker(account_id)  # emptied and removed on chain
-                continue
-            if not acct["positions"] or acct["equity"] is None or acct["requirement"] is None:
-                continue
-            # The view shows equity before funding the account owes but has not yet been charged;
-            # `liquidate` charges it first, so the scan has to count it too. Without this a long
-            # whose cash has run out looks solvent for ever: nothing else touches its account.
-            owed = pending_funding(acct["positions"], snap)
-            equity, req = int(acct["equity"]) - owed, int(acct["requirement"])
-            # The contract's test (lib.rs `liquidate`): negative equity, or under the ratio.
-            if not (equity < 0 or (req > 0 and equity * margin.BPS < req * ratio)):
-                continue
+        started = self._clock()
+        takers = [a for a in self.store.takers() if a != self.sender.account_id]
+        with self._watch_lock:
+            for gone in set(self._watch).difference(takers):
+                del self._watch[gone]
+            for a in takers:
+                self._watch.setdefault(a, Watch())
+            # Most urgent first; among equals, in the order they joined the watch list.
+            due = [(self._watch[a].tier, self._watch[a].due, a) for a in takers]
+            due = sorted((x for x in due if x[1] <= started), key=lambda x: x[:2])
+        first_error: Exception | None = None
+        for n, (_, _, account_id) in enumerate(due):
+            if n and self._clock() - started >= self.cfg.liquidation_budget_s:
+                break
             try:
-                res = self.sender.call(
-                    self.contract_id, "liquidate", {"account_id": account_id}, gas=100 * TGAS
+                tier = self._check_account(account_id, snap)
+            except Exception as e:  # one account failing must not hide the others
+                first_error = first_error or e
+                tier = OPEN
+            now = self._clock()
+            with self._watch_lock:
+                w = self._watch.get(account_id)
+                if w is None or tier is None:
+                    self._watch.pop(account_id, None)
+                    continue
+                if tier == IDLE and now - w.quoted < self.cfg.quoted_watch_s:
+                    tier = OPEN
+                w.tier = tier
+                w.due = now + (
+                    self.cfg.recheck_idle_s
+                    if tier == IDLE
+                    else self.cfg.recheck_s
+                    if tier == OPEN
+                    else 0.0
                 )
-            except Exception as e:
-                if "liquidator needs an account" in str(e) and not self._warned_no_account:
-                    self._warned_no_account = True
-                    log.error(
-                        "keeper %s cannot liquidate: it needs a deposit in the contract to "
-                        "receive rewards",
-                        self.sender.account_id,
-                    )
-                if "not liquidatable" in str(e):
-                    continue  # recovered between the view and the call
-                raise
-            self.status.liquidations += 1
-            self.status.liquidated.insert(
-                0,
-                {
-                    "account": account_id,
-                    "liquidator": self.sender.account_id,
-                    "tx_hash": res.tx_hash,
-                    "ts_ns": str(time.time_ns()),
-                },
+        self._report_watch()
+        if first_error is not None:
+            raise first_error
+
+    def _report_watch(self) -> None:
+        now = self._clock()
+        with self._watch_lock:
+            watched = list(self._watch.values())
+        late = [now - w.due for w in watched if w.tier != IDLE and w.due > 0]
+        self.status.watch = {
+            "accounts": len(watched),
+            "with_positions": sum(w.tier != IDLE for w in watched),
+            "due": sum(w.due <= now for w in watched),
+            "behind_s": round(max([0.0, *late]), 1),
+        }
+
+    def _check_account(self, account_id: str, snap: Snapshot) -> int | None:
+        """Read one account and liquidate it if the contract would allow it. Returns how
+        urgently to read it again, or None when the account no longer exists."""
+        ratio = snap.params.liquidation_ratio_bps
+        acct = self.cache.view("get_account", {"account_id": account_id})
+        if acct is None:
+            self.store.remove_taker(account_id)  # emptied and removed on chain
+            return None
+        if not acct["positions"]:
+            return IDLE
+        if acct["equity"] is None or acct["requirement"] is None:
+            return OPEN  # the contract cannot value it now (stale spot); read again soon
+        # The view shows equity before funding the account owes but has not yet been charged;
+        # `liquidate` charges it first, so the scan has to count it too. Without this a long
+        # whose cash has run out looks solvent for ever: nothing else touches its account.
+        owed = pending_funding(acct["positions"], snap)
+        equity, req = int(acct["equity"]) - owed, int(acct["requirement"])
+        # The contract's test (lib.rs `liquidate`): negative equity, or under the ratio.
+        if not (equity < 0 or (req > 0 and equity * margin.BPS < req * ratio)):
+            near = (
+                equity * margin.BPS < req * ratio * self.cfg.near_factor
+                if req > 0
+                else equity < NEAR_EQUITY
             )
-            del self.status.liquidated[20:]
-            log.warning(
-                "liquidated %s in %s (equity %d after %d of funding owed, requirement %d)",
-                account_id,
-                res.tx_hash,
-                equity,
-                owed,
-                req,
+            return NEAR if near else OPEN
+        try:
+            res = self.sender.call(
+                self.contract_id, "liquidate", {"account_id": account_id}, gas=100 * TGAS
             )
+        except Exception as e:
+            if "liquidator needs an account" in str(e) and not self._warned_no_account:
+                self._warned_no_account = True
+                log.error(
+                    "keeper %s cannot liquidate: it needs a deposit in the contract to "
+                    "receive rewards",
+                    self.sender.account_id,
+                )
+            if "not liquidatable" in str(e):
+                return NEAR  # recovered between the view and the call
+            raise
+        self.status.liquidations += 1
+        self.status.liquidated.insert(
+            0,
+            {
+                "account": account_id,
+                "liquidator": self.sender.account_id,
+                "tx_hash": res.tx_hash,
+                "ts_ns": str(time.time_ns()),
+            },
+        )
+        del self.status.liquidated[20:]
+        log.warning(
+            "liquidated %s in %s (equity %d after %d of funding owed, requirement %d)",
+            account_id,
+            res.tx_hash,
+            equity,
+            owed,
+            req,
+        )
+        return NEAR  # read it again at once: it may need a second pass, or be gone
 
     # -- loop ---------------------------------------------------------------------------------
 

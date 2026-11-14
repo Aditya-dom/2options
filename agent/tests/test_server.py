@@ -1,4 +1,5 @@
 import json
+import socket
 import threading
 import urllib.error
 import urllib.request
@@ -9,9 +10,11 @@ import pytest
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from twooptions_agent import config, near
+from twooptions_agent import server as server_module
+from twooptions_agent import store as store_module
 from twooptions_agent.chain import ChainCache
 from twooptions_agent.quoter import Quoter, QuoterConfig
-from twooptions_agent.server import App, RateLimiter, make_handler
+from twooptions_agent.server import App, RateLimiter, Server, client_ip, make_handler
 from twooptions_agent.store import Store
 
 from .fakes import CONTRACT, FakeChain
@@ -385,3 +388,147 @@ def test_limits_are_published_and_enforced_on_quotes(app: App, chain: FakeChain)
     assert app.handle("/quote", {**big, "side": "Sell", "size": "5000000"}, "1.1.1.1")[0] == 200
     status, body = app.handle("/quote", {**big, "taker": "nobody.testnet"}, "1.1.1.1")
     assert status == 409 and body["error"] == "deposit first"
+
+
+# -- limits on a public server -----------------------------------------------------------------
+
+
+def test_a_quote_puts_the_account_on_the_keepers_close_watch(app: App) -> None:
+    touched: list[str] = []
+
+    class Watching:
+        def touch(self, account_id: str) -> None:
+            touched.append(account_id)
+
+    app.keeper = Watching()  # type: ignore[assignment]
+    status, _ = app.handle("/quote", {**QUOTE, "taker": "alice.testnet"})
+    assert status == 200 and touched == ["alice.testnet"]
+    status, _ = app.handle("/quote", {**QUOTE, "taker": "nobody.testnet"})  # refused: no deposit
+    assert status == 409 and touched == ["alice.testnet"]
+
+
+def test_the_limiter_forgets_idle_clients_first_and_never_everyone_at_once() -> None:
+    lim = RateLimiter(per_second=1, burst=2, max_clients=4)
+    assert lim.allow("busy", now=0) and lim.allow("busy", now=0) and not lim.allow("busy", now=0)
+    for i in range(3):
+        lim.allow(f"idle{i}", now=0)
+    # Five seconds on, the idle ones have full buckets again; one more client forces a clean-up.
+    assert lim.allow("busy", now=5.0) and lim.allow("busy", now=5.0)
+    lim.allow("new", now=5.0)
+    assert not lim.allow("busy", now=5.0)  # still out of tokens: it was not handed a new burst
+    assert set(lim._state) == {"busy", "new"}
+
+    # When every client is active there is nothing idle to forget: the most recent half stay.
+    crowd = RateLimiter(per_second=0.001, burst=1, max_clients=4)
+    for i in range(5):
+        crowd.allow(f"c{i}", now=float(i))
+    assert set(crowd._state) == {"c3", "c4"}
+    assert not crowd.allow("c4", now=5.0)
+
+
+@pytest.mark.parametrize(
+    ("peer", "header", "expect"),
+    [
+        ("203.0.113.9", None, "203.0.113.9"),
+        # A client that connects directly cannot pick whom it is counted as.
+        ("203.0.113.9", "1.1.1.1", "203.0.113.9"),
+        ("10.0.0.1", None, "10.0.0.1"),
+        ("10.0.0.1", "198.51.100.7", "198.51.100.7"),
+        # The client wrote the first entry; the proxy appended the address it really saw.
+        ("10.0.0.1", "1.1.1.1, 198.51.100.7", "198.51.100.7"),
+        ("10.0.0.1", "198.51.100.7, 10.0.0.2", "198.51.100.7"),  # two proxies in a row
+        ("10.0.0.1", "10.0.0.2", "10.0.0.1"),
+        ("10.0.0.1", " , ", "10.0.0.1"),
+    ],
+)
+def test_the_client_is_taken_from_the_header_only_behind_a_named_proxy(
+    peer: str, header: str | None, expect: str
+) -> None:
+    assert client_ip(peer, header, frozenset({"10.0.0.1", "10.0.0.2"})) == expect
+
+
+def test_quotes_behind_a_proxy_are_limited_per_client_not_per_proxy(app: App) -> None:
+    app.limiter = RateLimiter(per_second=0.001, burst=1)
+    app.proxies = frozenset({"127.0.0.1"})
+    httpd = Server(("127.0.0.1", 0), make_handler(app))
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    query = "&".join(f"{k}={v}" for k, v in QUOTE.items())
+    url = f"http://127.0.0.1:{httpd.server_address[1]}/quote?{query}"
+
+    def quote(client: str) -> int:
+        req = urllib.request.Request(url, headers={"X-Forwarded-For": client})
+        try:
+            with urllib.request.urlopen(req, timeout=5) as r:
+                return int(r.status)
+        except urllib.error.HTTPError as e:
+            return e.code
+
+    try:
+        assert [quote("198.51.100.1"), quote("198.51.100.1"), quote("198.51.100.2")] == [
+            200,
+            429,
+            200,
+        ]
+    finally:
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_open_connections_are_capped_and_idle_ones_are_dropped(
+    app: App, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(server_module, "IDLE_TIMEOUT_S", 0.3)
+    httpd = Server(("127.0.0.1", 0), make_handler(app), max_connections=2)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    address = ("127.0.0.1", httpd.server_address[1])
+
+    def closed_by_server(sock: socket.socket, within: float) -> bool:
+        sock.settimeout(within)
+        try:
+            return sock.recv(1) == b""
+        except TimeoutError:
+            return False
+        except ConnectionError:
+            return True
+
+    try:
+        idle = [socket.create_connection(address) for _ in range(2)]  # connect, say nothing
+        extra = socket.create_connection(address)
+        assert closed_by_server(extra, 0.2)  # over the cap: refused at once, no thread spent
+        assert all(closed_by_server(s, 1.0) for s in idle)  # the silent ones time out
+        with urllib.request.urlopen(f"http://{address[0]}:{address[1]}/health", timeout=5) as r:
+            assert r.status == 200  # and their slots are free again
+    finally:
+        for s in (*idle, extra):
+            s.close()
+        httpd.shutdown()
+        httpd.server_close()
+
+
+def test_the_log_files_stay_bounded_and_keep_the_newest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(store_module, "MAX_FUNDING_IN_MEMORY", 10)
+    monkeypatch.setattr(store_module, "MAX_HEDGE_IN_MEMORY", 5)
+    store = Store(tmp_path)
+    lines = lambda name: (tmp_path / name).read_text().splitlines()  # noqa: E731
+    sizes = []
+    for i in range(100):
+        store.add_funding({"series": "ETH-2100-C", "epoch": str(i)})
+        store.add_hedge_order({"n": i})
+        sizes.append((len(lines("funding.jsonl")), len(lines("hedge.jsonl"))))
+    assert max(f for f, _ in sizes) <= 20 and max(h for _, h in sizes) <= 10
+    assert [e["epoch"] for e in store.funding_history(None, 3)] == ["99", "98", "97"]
+    assert json.loads(lines("funding.jsonl")[-1])["epoch"] == "99"
+    assert not list(tmp_path.glob("*.tmp"))
+
+    # A file left oversized by an older version is cut down when it is next opened.
+    with (tmp_path / "funding.jsonl").open("a") as f:
+        f.writelines(
+            json.dumps({"series": "ETH-2100-C", "epoch": str(i)}) + "\n" for i in range(100, 200)
+        )
+        f.write('{"torn')
+    again = Store(tmp_path)
+    assert len(lines("funding.jsonl")) == 10
+    assert [e["epoch"] for e in again.funding_history(None, 2)] == ["199", "198"]
+    assert len(again.funding_history(None, 500)) == 10

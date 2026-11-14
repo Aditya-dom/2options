@@ -125,6 +125,25 @@ export interface Position {
   entryIndex: bigint | null;
 }
 
+/**
+ * Positions in a fixed order for display: by underlying, then strike, calls before puts. The
+ * contract keeps them in a list it reorders when one closes (the last takes the closed one's
+ * place), so shown as stored, closing one row would shuffle the others.
+ */
+export function orderPositions(positions: readonly Position[], series: ReadonlyMap<string, Series>): Position[] {
+  const key = (p: Position) => series.get(p.series);
+  return [...positions].sort((a, b) => {
+    const x = key(a);
+    const y = key(b);
+    if (x && y) {
+      if (x.underlying !== y.underlying) return x.underlying < y.underlying ? -1 : 1;
+      if (x.strike !== y.strike) return x.strike < y.strike ? -1 : 1;
+      if (x.kind !== y.kind) return x.kind === 'Call' ? -1 : 1;
+    }
+    return a.series < b.series ? -1 : a.series > b.series ? 1 : 0;
+  });
+}
+
 export interface AccountState {
   collateral: bigint;
   positions: Position[];

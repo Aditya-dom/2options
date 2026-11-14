@@ -10,10 +10,13 @@ import type { Call, ChainRow, FaucetStatus, HedgeStatus } from '../backend/types
 import type { AccountState, LpClaim, Params, Series, SpotPoint, Underlying, Vault } from '../lib/contract';
 import { isDemo, txUrl } from '../lib/config';
 import { friendlyError } from '../lib/errors';
+import { pollWhileVisible } from '../lib/poll';
 import { agent, backend, world } from '../services';
+import { useRoute } from './useRoute';
 import { useWallet } from './useWallet';
 
 // Chain mode makes about ten RPC calls per poll; free endpoints throttle anything much faster.
+// Nothing is polled from the landing page or from a tab nobody is looking at.
 const POLL_MS = isDemo ? 1_000 : 5_000;
 const MAX_FUNDING_EVENTS = 200;
 
@@ -77,6 +80,7 @@ const Ctx = createContext<ProtocolCtx | null>(null);
 
 export function ProtocolProvider({ children }: { children: ReactNode }) {
   const accountId = useWallet(s => s.accountId);
+  const onDesk = useRoute() !== 'landing';
   const [data, setData] = useState<ProtocolData>(EMPTY);
   const lastSeries = useRef<Map<string, Series>>(new Map());
   const inflight = useRef(false);
@@ -155,11 +159,10 @@ export function ProtocolProvider({ children }: { children: ReactNode }) {
   }, [accountId]);
 
   useEffect(() => {
+    if (!onDesk) return;
     world?.start();
-    void load();
-    const t = setInterval(load, POLL_MS);
-    return () => { clearInterval(t); };
-  }, [load]);
+    return pollWhileVisible(() => { void load(); }, POLL_MS);
+  }, [load, onDesk]);
 
   const send = useCallback(async (call: Call, label: string) => {
     if (!accountId) {
