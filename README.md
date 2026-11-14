@@ -6,7 +6,7 @@
 
 2Options is an everlasting-options exchange. A call or put has no expiry date: instead of buying a dated contract and rolling it, the holder pays a small funding amount every hour for as long as they keep it. A NEAR smart contract holds every dollar, enforces margin and settles funding. An off-chain agent prices the options and signs quotes, and the contract checks each quote against its own limits before anything moves.
 
-**Live on NEAR testnet at [2options.xyz](https://2options.xyz).** Built at NEAR Hackathon, 1–14 November 2026, for the Unstoppable DeFi and AI Security & Defense tracks.
+**Live on NEAR testnet at [2options.xyz](https://2options.xyz).** Built at NEAR Hackathon for the Unstoppable DeFi and AI Security & Defense tracks.
 
 | Testnet | Account |
 |---|---|
