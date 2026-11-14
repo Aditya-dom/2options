@@ -7,6 +7,7 @@ import { buildStatus, type Level, type Overall, type StatusReport } from '../lib
 import { agent, backend } from '../services';
 import { useTheme } from '../theme';
 import { Badge, Empty, Panel, Row } from './ui';
+import { Pulse } from './ascii';
 
 const POLL_MS = 5_000;
 
@@ -78,6 +79,7 @@ export function StatusView({ report, nowMs, liquidated, deployment }: {
         <span aria-hidden style={{ width: 12, height: 12, borderRadius: '50%', background: overall, boxShadow: `0 0 10px ${overall}`, flexShrink: 0 }} />
         <span style={{ fontFamily: t.MONO, fontSize: 12, fontWeight: 700, letterSpacing: '0.16em', color: overall }}>{OVERALL_LABEL[report.overall]}</span>
         <span style={{ fontFamily: t.MONO, fontSize: 13, color: t.WHITE, flex: 1, minWidth: 200 }}>{report.headline}</span>
+        <Pulse alive={report.overall === 'operational' || report.overall === 'degraded'} color={overall} />
         <span className="tabular-nums" style={{ fontFamily: t.MONO, fontSize: 10, color: t.DIM }}>checked {new Date(nowMs).toLocaleTimeString()}</span>
       </section>
 

@@ -6,6 +6,7 @@ import { useTheme } from '../theme';
 import AgentBadge from './AgentBadge';
 import FaucetButton from './FaucetButton';
 import { Badge } from './ui';
+import { Spinner } from './ascii';
 
 /** Layout and styling follow the earlier Pacifica frontend's TradeHeader. */
 export default function Header({ tab }: { tab: Tab }) {
@@ -65,7 +66,7 @@ export default function Header({ tab }: { tab: Tab }) {
               cursor: ready ? 'pointer' : 'default', background: ready ? t.PRIMARY_BG : 'transparent', color: ready ? t.PRIMARY_FG : t.DIM,
               border: `1px solid ${ready ? t.PRIMARY_BORDER : t.BORDER}`,
             }}>
-              {!ready ? 'Loading…' : isDemo ? 'Use Demo Account' : 'Connect Wallet'}
+              {!ready ? <><Spinner style={{ marginRight: 6 }} />Loading</> : isDemo ? 'Use Demo Account' : 'Connect Wallet'}
             </button>
           )}
         </div>

@@ -11,6 +11,7 @@ import AccountPanel from './AccountPanel';
 import type { FundsMode } from './FundsDialog';
 import { fundingPerHour, type Pick } from './OptionChain';
 import Positions from './Positions';
+import { Spinner } from './ascii';
 
 const TABS = ['Positions', 'Trade History', 'Assets', 'Funding Rate'] as const;
 const HISTORY_POLL_MS = 15_000;
@@ -61,7 +62,7 @@ export default function Activity({ onClose, onFunds, onBridge }: {
         {tab === 'Trade History' && (
           !accountId ? <Msg>Connect a wallet to see your trades.</Msg>
           : historyErr && !fills ? <Msg>Could not load trade history: {historyErr}</Msg>
-          : fills == null ? <Msg>Loading…</Msg>
+          : fills == null ? <Msg><Spinner style={{ marginRight: 8 }} />Loading…</Msg>
           : fills.length === 0 ? <Msg>No trades yet.</Msg>
           : (
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 620 }}>

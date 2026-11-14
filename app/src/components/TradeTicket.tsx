@@ -20,6 +20,7 @@ import PayoffChart from './PayoffChart';
 import { limitError } from '../lib/limits';
 import { useTradeLimits } from '../hooks/useTradeLimits';
 import { AmountInput, Button, Empty, Note, Panel, Row } from './ui';
+import { AsciiMeter } from './ascii';
 
 const MIN_SIZE = 1_000n; // 0.001 contract, the contract's MIN_TRADE_SIZE
 
@@ -203,9 +204,7 @@ export default function TradeTicket({ pick, onPick, size, onSize, onFunds }: {
           <Button onClick={signIn}>CONNECT WALLET TO TRADE</Button>
         ) : live ? (
           <>
-            <div style={{ height: 3, background: t.BORDER }}>
-              <div style={{ height: 3, width: `${Math.min(100, (msLeft / ttlMs) * 100)}%`, background: msLeft < 3_000 ? t.RED : sideColor, transition: 'width 0.2s linear' }} />
-            </div>
+            <AsciiMeter value={msLeft / ttlMs} cells={40} size={11} color={msLeft < 3_000 ? t.RED : sideColor} label="Time left on the quote" />
             <Button variant={side === 'Buy' ? 'buy' : 'sell'} onClick={submit} disabled={busy != null}>
               {busy === 'submit' ? 'SUBMITTING…' : `${side.toUpperCase()} ${fmtSize(sizeUnits!)} @ ${fmtPremium(big(quote!.quote.price))} · ${(msLeft / 1000).toFixed(1)}s`}
             </Button>

@@ -3,6 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../theme';
 import InfoTip from './InfoTip';
+import { AsciiRule, GlyphMark, Scramble, Spinner } from './ascii';
 
 /** Portalled to <body> so it never inherits styles (e.g. the header's nowrap) or gets clipped. */
 export function Dialog({ title, onClose, children, width = 400 }: { title: string; onClose: () => void; children: ReactNode; width?: number }) {
@@ -33,10 +34,15 @@ export function Panel({ title, right, children, style, bodyStyle, bare, info }: 
   return (
     <section style={{ background: t.PANEL, border: `1px solid ${t.BORDER}`, display: 'flex', flexDirection: 'column', minWidth: 0, ...style }}>
       <header style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px',
+        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
         borderBottom: `1px solid ${t.BORDER}`, fontFamily: t.MONO, fontSize: 10, letterSpacing: '0.16em', color: t.ACCENT,
       }}>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>{title}{info != null && <InfoTip label={`About ${title.toLowerCase()}`}>{info}</InfoTip>}</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, position: 'relative', flexShrink: 0 }}>
+          <span aria-hidden style={{ letterSpacing: 0, opacity: 0.85 }}>▚▞</span>
+          <Scramble text={title} />
+          {info != null && <InfoTip label={`About ${title.toLowerCase()}`}>{info}</InfoTip>}
+        </span>
+        <AsciiRule />
         {right}
       </header>
       <div style={{ padding: 12, minWidth: 0, ...bodyStyle }}>{children}</div>
@@ -145,9 +151,18 @@ export function Note({ children, tone = 'info' }: { children: ReactNode; tone?: 
   );
 }
 
-export function Empty({ children }: { children: ReactNode }) {
+/** An empty state: the infinity mark over a line of text, or a spinner while something loads. */
+export function Empty({ children, mark = true }: { children: ReactNode; mark?: boolean }) {
   const { t } = useTheme();
-  return <div style={{ fontFamily: t.MONO, fontSize: 11, color: t.DIM, padding: '18px 0', textAlign: 'center' }}>{children}</div>;
+  const loading = typeof children === 'string' && /^Loading/.test(children);
+  const showMark = mark && !loading && typeof children === 'string' && children.length > 2;
+  return (
+    <div style={{ fontFamily: t.MONO, fontSize: 11, color: t.DIM, padding: '18px 0', textAlign: 'center' }}>
+      {showMark && <GlyphMark />}
+      {loading && <Spinner style={{ marginRight: 8 }} />}
+      {children}
+    </div>
+  );
 }
 
 /** A headline number: a small normal-case label over a large monospaced value. */

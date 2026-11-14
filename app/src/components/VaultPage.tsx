@@ -8,6 +8,7 @@ import { fmtDuration } from './FundingPanel';
 import type { FundsMode } from './FundsDialog';
 import HedgePanel from './HedgePanel';
 import { AmountInput, Button, Details, Empty, Kpi, Line, Panel } from './ui';
+import { AsciiMeter } from './ascii';
 
 /** LP shares carry 6 implied decimals (the first deposit mints 1 share unit per USDC micro). */
 const SHARE_DECIMALS = 6;
@@ -89,9 +90,7 @@ export default function VaultPage({ onFunds }: { onFunds: (m: FundsMode) => void
                 <span>Paid to traders this hour</span>
                 <span className="tabular-nums" style={{ fontFamily: t.MONO, color: t.GRAY }}>{fmtUsdc(paid, 0)} of {fmtUsdc(cap, 0)}</span>
               </div>
-              <div style={{ height: 6, borderRadius: 99, background: t.MUTED, border: `1px solid ${t.BORDER}`, overflow: 'hidden' }}>
-                <div style={{ width: `${paidPct}%`, height: '100%', background: paidPct > 80 ? t.ORANGE : t.GREEN }} />
-              </div>
+              <AsciiMeter value={paidPct / 100} color={paidPct > 80 ? t.ORANGE : t.GREEN} label="Paid to traders this hour, against the limit" />
             </div>
           )}
 

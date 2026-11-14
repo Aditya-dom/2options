@@ -8,6 +8,7 @@ import { useTheme } from '../theme';
 import FaucetButton from './FaucetButton';
 import type { FundsMode } from './FundsDialog';
 import { Badge, Button, Note, Panel, Row, Stat } from './ui';
+import { AsciiMeter } from './ascii';
 
 const TIER_LABEL: Record<HealthTier, string> = {
   healthy: 'HEALTHY', warning: 'BELOW INITIAL', 'close-only': 'CLOSE ONLY', liquidatable: 'LIQUIDATABLE',
@@ -52,11 +53,9 @@ export default function AccountPanel({ onFunds, onBridge, bare }: { onFunds: (m:
           sub={ratio != null ? `health ${(Number(ratio) / 10_000).toFixed(2)}×` : account?.positions.length ? undefined : 'no open shorts'} color={tierColor} />
       </div>
       {ratio != null && params && (
-        <div style={{ position: 'relative', height: 6, background: t.MUTED, border: `1px solid ${t.BORDER}`, marginBottom: 12 }}>
-          <div style={{ position: 'absolute', inset: 0, width: `${pos(ratio)}%`, background: tierColor }} />
-          {[params.liquidation_ratio_bps, params.close_only_ratio_bps, params.initial_ratio_bps].map(b => (
-            <div key={b.toString()} title={`${Number(b) / 10_000}×`} style={{ position: 'absolute', left: `${pos(b)}%`, top: -3, bottom: -3, width: 1, background: t.WHITE, opacity: 0.6 }} />
-          ))}
+        <div style={{ marginBottom: 12 }} title="Health from 1.0× to 3.0×. Marks: liquidation, close-only, initial margin.">
+          <AsciiMeter value={pos(ratio) / 100} color={tierColor} label="Account health"
+            marks={[params.liquidation_ratio_bps, params.close_only_ratio_bps, params.initial_ratio_bps].map(b => pos(b) / 100)} />
         </div>
       )}
       {underwater && (
