@@ -19,7 +19,7 @@
 2. Click **FAUCET** in the header: 2,000 test USDC, once a day per account.
 3. **Deposit** it as collateral, click an **Ask** in the option chain to buy (or a **Bid** to sell), get a firm quote and confirm.
 
-After the first deposit, trades need no wallet pop-up: the app adds a limited key that can only call the contract's trading methods. On this shared deployment each trade is capped at 0.1 contracts so the hedge stays small (see [Deployment](#deployment)).
+After the first deposit, trades need no wallet pop-up: the app adds a limited key that can only call the contract's trading methods. On this shared deployment each trade is capped at 0.1 contracts so the hedge stays small.
 
 The [status page](https://2options.xyz/#/status) shows the live health of every component.
 
@@ -79,17 +79,6 @@ Controls, all in `contracts/twooptions/src/lib.rs`:
 - **Arithmetic.** Checked integer fixed-point, rounding in the vault's favour. No floats on chain.
 - **Solvency invariant.** Trader cash + vault cash + insurance + pending LP claims = net USDC received, checked after every step of a 2,000-step random test.
 - **Circuit breaker.** If vault cash plus insurance goes negative, withdrawals halt until it is recapitalised.
-
-## Deployment
-
-| Piece | Where |
-|---|---|
-| Contracts | NEAR testnet |
-| App | Vercel (`app/vercel.json`) |
-| Agent: quotes, keeper, hedger | One Oracle Cloud VM behind Caddy (`deploy/oracle/`) |
-| Hedge venue | Hyperliquid testnet |
-
-The shared deployment caps sizes in the agent so the hedge uses little test money: at most 0.1 contracts per trade, 0.1 per account per series, and 0.25 open across all accounts per underlying; the hedge is capped at $500. Closing a position is always allowed. The limits are agent settings (`TWOOPTIONS_MAX_*`, `HEDGE_MAX_*`), published at `/limits`, and the app shows them on the ticket.
 
 ## Run it locally
 
