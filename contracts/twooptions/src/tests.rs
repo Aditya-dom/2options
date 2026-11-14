@@ -666,6 +666,174 @@ fn liquidator_must_have_an_account() {
 }
 
 // ---------------------------------------------------------------------------------------------
+// The long side: premiums are paid in full, and a long that cannot pay its funding is closed
+// ---------------------------------------------------------------------------------------------
+
+/// A trader holding one ATM call bought for 12 with exactly 12 on deposit: no cash left.
+fn long_with_no_spare_cash() -> Harness {
+    let mut h = ready();
+    h.deposit("carol.near", 12);
+    h.trade("carol.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
+    assert_eq!(h.collateral("carol.near"), 0);
+    h
+}
+
+/// One hourly settlement at 4% of a 12 USDC mark: each long contract owes 0.48 USDC.
+fn settle_an_hour(h: &mut Harness, spot: i128, mark: f64) {
+    h.advance(3_600);
+    h.spot(spot);
+    h.funding("ETH-3500-C", 40_000_000, mark);
+}
+
+fn liquidate_err(h: &mut Harness, who: &str) -> String {
+    h.as_user("keeper.near");
+    let before = Snapshot::take(&h.c);
+    let c = &mut h.c;
+    let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| c.liquidate(acct(who))));
+    match r {
+        Ok(()) => String::new(),
+        Err(e) => {
+            before.restore(&mut h.c);
+            e.downcast_ref::<String>().cloned().or_else(|| e.downcast_ref::<&str>().map(|s| s.to_string())).unwrap_or_default()
+        }
+    }
+}
+
+#[test]
+fn a_buy_must_be_paid_in_full() {
+    let mut h = ready();
+    h.deposit("bob.near", 1);
+    // 1,200 USDC of premium against 1 USDC of cash. The requirement of a long is zero, so the
+    // margin check alone would let this through.
+    let err = trade_err(&mut h, "bob.near", "ETH-3500-C", Side::Buy, 100.0, 12.0);
+    assert_eq!(err, "not enough cash to pay the premium");
+    assert_eq!(h.collateral("bob.near"), USDC as i128);
+    assert!(h.c.get_account(acct("bob.near")).unwrap().positions.is_empty());
+    // One micro short of the premium is still refused; the exact premium is accepted.
+    h.deposit("bob.near", 10);
+    assert_eq!(trade_err(&mut h, "bob.near", "ETH-3500-C", Side::Buy, 1.0, 11.000001), "not enough cash to pay the premium");
+    assert_eq!(trade_err(&mut h, "bob.near", "ETH-3500-C", Side::Buy, 1.0, 11.0), "");
+    assert_eq!(h.collateral("bob.near"), 0);
+    h.assert_solvent();
+}
+
+#[test]
+fn a_buy_that_closes_a_short_is_also_paid_from_cash() {
+    let mut h = short_then_squeeze(); // bob: 1,711 cash, short one ATM call
+    for p in [3_800, 4_100, 4_400, 4_700, 5_000, 5_300] {
+        h.advance(20);
+        h.spot(p);
+    }
+    // Buying the call back at its intrinsic value of 1,800 costs more cash than bob has.
+    assert_eq!(trade_err(&mut h, "bob.near", "ETH-3500-C", Side::Buy, 1.0, 1_800.0), "not enough cash to pay the premium");
+    // Liquidation is what closes an account like this.
+    assert_eq!(liquidate_err(&mut h, "bob.near"), "");
+    h.assert_solvent();
+}
+
+#[test]
+fn a_long_that_can_pay_its_funding_is_not_liquidatable() {
+    let mut h = ready();
+    h.deposit("carol.near", 13); // 1 USDC to spare after the premium
+    h.trade("carol.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
+    assert_eq!(liquidate_err(&mut h, "carol.near"), "account is not liquidatable");
+    settle_an_hour(&mut h, 3_500, 12.0);
+    settle_an_hour(&mut h, 3_500, 12.0);
+    // 0.96 owed, 1.00 on hand.
+    assert_eq!(liquidate_err(&mut h, "carol.near"), "account is not liquidatable");
+    settle_an_hour(&mut h, 3_500, 12.0);
+    // 1.44 owed: the cash has run out.
+    assert_eq!(liquidate_err(&mut h, "carol.near"), "");
+    h.assert_solvent();
+}
+
+#[test]
+fn a_long_that_cannot_pay_its_funding_is_closed_at_the_mark() {
+    let mut h = long_with_no_spare_cash();
+    assert_eq!(liquidate_err(&mut h, "carol.near"), "account is not liquidatable");
+    settle_an_hour(&mut h, 3_500, 12.0);
+
+    let keeper_before = h.collateral("keeper.near");
+    let vault_before = h.c.vault_cash;
+    let insurance_before = h.c.insurance;
+    h.as_user("keeper.near");
+    h.c.liquidate(acct("carol.near"));
+
+    // Funding owed: 0.48. Position bought back at the 12.00 mark. Fees are 0.5% + 0.5% of that
+    // value, not of the 3,500 spot notional, which would have taken all of it.
+    let (funding, value, fee) = (480_000, 12_000_000, 60_000);
+    assert_eq!(h.collateral("carol.near"), value - funding - 2 * fee);
+    assert_eq!(h.collateral("keeper.near") - keeper_before, fee);
+    assert_eq!(h.c.insurance - insurance_before, fee);
+    assert_eq!(h.c.vault_cash - vault_before, funding - value, "the vault collects the funding and pays the mark");
+    assert!(h.c.get_account(acct("carol.near")).unwrap().positions.is_empty());
+    assert_eq!(h.c.get_series("ETH-3500-C".into()).unwrap().net_trader_size.0, 0);
+    h.assert_solvent();
+    // What is left is the trader's to withdraw.
+    h.as_user("carol.near");
+    let _ = h.c.withdraw(U128((value - funding - 2 * fee) as u128));
+    assert!(h.c.get_account(acct("carol.near")).is_none());
+    h.assert_solvent();
+}
+
+#[test]
+fn an_in_the_money_long_is_carried_by_its_intrinsic_value_until_that_goes() {
+    let mut h = long_with_no_spare_cash();
+    for p in [3_800, 3_900] {
+        h.advance(20);
+        h.spot(p);
+    }
+    settle_an_hour(&mut h, 3_900, 412.0);
+    // Cash is negative after funding, but the call is worth 400 at intrinsic: equity is positive.
+    assert_eq!(liquidate_err(&mut h, "carol.near"), "account is not liquidatable");
+    for p in [3_700, 3_500] {
+        h.advance(20);
+        h.spot(p);
+    }
+    // Back at the money the intrinsic value is gone and the unpaid funding is all that is left.
+    assert_eq!(liquidate_err(&mut h, "carol.near"), "");
+    h.assert_solvent();
+}
+
+#[test]
+fn unpaid_funding_beyond_a_longs_value_is_a_shortfall_not_a_free_ride() {
+    let mut h = long_with_no_spare_cash();
+    h.c.insurance = 5 * USDC as i128;
+    h.c.net_inflow += 5 * USDC as i128;
+    // The keeper was away for two days: 48 settlements of 0.48 = 23.04 owed against a call
+    // worth 12.00.
+    for _ in 0..48 {
+        settle_an_hour(&mut h, 3_500, 12.0);
+    }
+    let vault_before = h.c.vault_cash;
+    h.as_user("keeper.near");
+    h.c.liquidate(acct("carol.near"));
+    assert_eq!(h.collateral("carol.near"), 0);
+    assert!(h.c.get_account(acct("carol.near")).is_none(), "nothing is left to withdraw");
+    assert_eq!(h.c.insurance, 0, "insurance covers what it can of the 11.04 shortfall");
+    // The vault takes the option back without paying its 12.00 mark, and its cash moves only by
+    // the 5.00 drawn from insurance: of the 23.04 owed it ends up 6.04 short.
+    assert_eq!(h.c.vault_cash - vault_before, 5_000_000);
+    assert_eq!(h.c.get_series("ETH-3500-C".into()).unwrap().net_trader_size.0, 0);
+    h.assert_solvent();
+}
+
+#[test]
+fn a_short_is_still_charged_on_spot_notional() {
+    let mut h = short_then_squeeze();
+    for p in [3_800, 4_100, 4_400] {
+        h.advance(20);
+        h.spot(p);
+    }
+    let keeper_before = h.collateral("keeper.near");
+    h.as_user("keeper.near");
+    h.c.liquidate(acct("bob.near"));
+    // 0.5% of one contract at a 4,400 spot.
+    assert_eq!(h.collateral("keeper.near") - keeper_before, 22 * USDC as i128);
+    h.assert_solvent();
+}
+
+// ---------------------------------------------------------------------------------------------
 // Withdrawals
 // ---------------------------------------------------------------------------------------------
 
@@ -927,6 +1095,7 @@ fn ledger_invariant_holds_over_a_random_operation_mix() {
     };
     let mut spot_price: i128 = 3_500;
     let (mut completed, mut reverted, mut trades, mut liquidations) = (0, 0, 0, 0);
+    let mut buys = 0;
 
     for step in 0..2_000 {
         h.advance(20);
@@ -973,6 +1142,7 @@ fn ledger_invariant_holds_over_a_random_operation_mix() {
                 h.deposit(who, ((r >> 12) % 400 + 1) as u128);
             }
         }));
+        let attempt_ok = attempt.is_ok();
         match attempt {
             Ok(()) => {
                 completed += 1;
@@ -991,6 +1161,18 @@ fn ledger_invariant_holds_over_a_random_operation_mix() {
             }
         }
         assert_eq!(h.c.ledger_total(), h.c.net_inflow, "ledger drift at step {step}");
+        // The long side: a completed buy is always paid for, and only an account that still
+        // holds positions can carry a negative balance (through funding it has yet to settle).
+        if attempt_ok && (1..=3).contains(&kind) && (r >> 16) % 10 < 3 {
+            let who = users[(r >> 8) as usize % 3];
+            assert!(h.collateral(who) >= 0, "a buy left {who} with negative cash at step {step}");
+            buys += 1;
+        }
+        for who in users {
+            if let Some(a) = h.c.accounts.get(&acct(who)) {
+                assert!(a.collateral >= 0 || !a.positions.is_empty(), "{who} is flat with negative cash at step {step}");
+            }
+        }
         assert!(h.c.vault_cash >= 0 || kind == 6, "vault cash went negative at step {step}");
     }
     // The run must exercise both accepted and rejected paths, not just one.
@@ -998,7 +1180,8 @@ fn ledger_invariant_holds_over_a_random_operation_mix() {
     assert!(reverted > 100, "reverted {reverted}");
     assert!(trades > 20, "trades {trades}");
     assert!(liquidations > 0, "the run never liquidated anything");
-    println!("random run: {completed} completed, {reverted} reverted, {trades} trades, {liquidations} liquidations");
+    assert!(buys > 5, "the run completed only {buys} buys");
+    println!("random run: {completed} completed, {reverted} reverted, {trades} trades ({buys} buys), {liquidations} liquidations");
 }
 
 // ---------------------------------------------------------------------------------------------

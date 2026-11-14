@@ -76,7 +76,8 @@ pub struct PositionEntry {
 #[near(serializers = [borsh])]
 #[derive(Clone, Debug, Default)]
 pub struct Account {
-    /// Cash balance in USDC micros. Can dip below zero through funding until liquidation.
+    /// Cash balance in USDC micros. Only funding can take it below zero (a buy must be paid in
+    /// full); an account whose equity is negative can be liquidated.
     pub collateral: i128,
     pub positions: Vec<PositionEntry>,
     /// Highest quote nonce consumed. Quotes must use a strictly larger nonce.
