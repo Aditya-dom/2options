@@ -1,4 +1,4 @@
-"""RFQ quoter (#21): prices the option chain and signs quotes the contract will accept.
+"""RFQ quoter: prices the option chain and signs quotes the contract will accept.
 
 The quoter prices off the contract's own cached spot, not a fresher off-chain one. The contract
 checks every price against a band around that cached spot, so pricing from the same number means

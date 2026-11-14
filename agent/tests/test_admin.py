@@ -1,7 +1,10 @@
+from pathlib import Path
+
 import pytest
 
 from twooptions_agent import admin
 from twooptions_agent.pricing import everlasting
+from twooptions_agent.store import Store
 
 from .fakes import PARAMS
 
@@ -53,3 +56,19 @@ def test_preset_only_touches_known_params_and_passes_the_contract_validation() -
 def test_preset_band_holds_the_fair_price_up_to_high_vol(vol: float) -> None:
     fair = everlasting(2_110.0, 2_110.0, vol, True).price
     assert fair < 2_110.0 * admin.PARAMS_PRESET["max_time_value_bps"] / 10_000
+
+
+def test_index_candidates_come_from_the_watch_list_the_command_line_and_a_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("TWOOPTIONS_DATA_DIR", str(tmp_path / "data"))
+    Store(tmp_path / "data").add_taker("watched.testnet")
+    lines = tmp_path / "ids.txt"
+    lines.write_text("one.testnet\ntwo.testnet\n\n")
+    as_json = tmp_path / "ids.json"
+    as_json.write_text('["three.testnet", "one.testnet"]')
+    assert admin.index_candidates("", None) == ["watched.testnet"]
+    assert admin.index_candidates(" a.testnet , b.testnet,", lines) == [
+        "watched.testnet", "a.testnet", "b.testnet", "one.testnet", "two.testnet",
+    ]  # fmt: skip
+    assert admin.index_candidates("", as_json)[1:] == ["three.testnet", "one.testnet"]

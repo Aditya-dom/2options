@@ -53,7 +53,7 @@ export default function AgentBadge() {
                 )}
                 {!s.attestation?.code_hash && (
                   <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.DIM, lineHeight: 1.5, marginTop: 4 }}>
-                    The code hash and TEE quote appear here once the agent runs as a Shade Agent (#34).
+                    The code hash and TEE quote appear here when the agent runs in a TEE.
                   </div>
                 )}
               </div>

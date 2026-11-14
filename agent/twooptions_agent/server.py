@@ -1,4 +1,4 @@
-"""The agent's HTTP API (#21) and process entry point.
+"""The agent's HTTP API and process entry point.
 
     GET /chain                          bid, ask, mark, greeks and funding rate per series
     GET /quote?series=&side=&size=&taker=   one signed quote
@@ -25,7 +25,8 @@ so one container (Dockerfile at the repo root) serves the trade desk, the API an
 
 Standard library only: one thread per request, which is plenty for an RFQ desk and keeps the
 image that runs inside the TEE small. The server is public, so it is bounded: a limit on open
-connections, a timeout on idle ones, and a rate limit on signing per client.
+connections, a timeout on idle ones, and rate limits on signing: per account, which holds
+whatever is in front of the server, and per source address.
 """
 
 from __future__ import annotations
@@ -73,6 +74,10 @@ API_PATHS = frozenset(
 MAX_CONNECTIONS = 256
 #: Seconds a connection may sit without sending its request or taking its answer.
 IDLE_TIMEOUT_S = 15.0
+#: How long "this account has not deposited" is remembered, so that asking again and again for
+#: an account that does not exist costs no chain reads.
+NO_ACCOUNT_TTL_S = 30.0
+MAX_NO_ACCOUNT = 10_000
 
 
 class RateLimiter:
@@ -161,8 +166,18 @@ class App:
     keeper: Keeper | None = None
     hedger: Hedger | None = None
     cors: list[str] = field(default_factory=list)
-    limiter: RateLimiter = field(default_factory=RateLimiter)
+    #: Quotes per source address. Behind a gateway that hides the client every user shares
+    #: this one, so it is a ceiling on the whole site there and set well above one user's need.
+    limiter: RateLimiter = field(default_factory=lambda: RateLimiter(per_second=20.0, burst=60.0))
+    #: Quotes per account: what one trader may ask for, wherever the request comes from.
+    taker_limiter: RateLimiter = field(default_factory=RateLimiter)
+    #: Chain reads for accounts not seen before, across all clients.
+    lookup_limiter: RateLimiter = field(
+        default_factory=lambda: RateLimiter(per_second=10.0, burst=40.0)
+    )
     proxies: frozenset[str] = frozenset()
+    _no_account: dict[str, float] = field(default_factory=dict)
+    _no_account_lock: threading.Lock = field(default_factory=threading.Lock)
     code_hash: str = ""
     tee_quote_url: str = ""
     #: TDX quote bound to the agent key (tee.attest), when running in a dstack VM.
@@ -223,23 +238,59 @@ class App:
         size = _int_param(q, "size", 0, 1, 10**30)
         taker = q["taker"]
         side = Side[q["side"]]
+        if len(taker) > 64:
+            raise QuoteError(400, "taker is not an account id")
+        if not self.taker_limiter.allow(taker):
+            raise QuoteError(429, "too many quote requests for this account")
+        known = taker in self.store.takers()
         snap = self.cache.get()
+        checked = False
         if self.quoter.cfg.has_limits:
-            acct = self.cache.view("get_account", {"account_id": taker})
-            if acct is None:
-                raise QuoteError(409, "deposit first")
+            acct = self._account(taker, known)
+            checked = True
             held = sum(int(p["size"]) for p in acct["positions"] if p["series"] == q["series"])
             self.quoter.check_limits(snap, q["series"], side, size, held)
         signed = self.quoter.quote(snap, q["series"], side, size, taker)
-        # The contract only trades for accounts that have deposited. Checking here keeps
-        # made-up account ids out of the liquidation watch list.
-        if taker not in self.store.takers():
-            if self.cache.view("get_account", {"account_id": taker}) is None:
-                raise QuoteError(409, "deposit first")
+        # The contract only trades for accounts that have deposited, and only those go on the
+        # liquidation watch list.
+        if not known:
+            if not checked:
+                self._account(taker, known)
             self.store.add_taker(taker)
         if self.keeper is not None:
             self.keeper.touch(taker)  # a trade may follow: watch it closely for a while
         return signed.to_json()
+
+    def _account(self, taker: str, known: bool) -> Any:
+        """The taker's account on chain, or a refusal. An account this agent has not seen
+        costs a chain read, and made-up ids must not become a stream of reads: a miss is
+        remembered for a while, and lookups of new accounts are rationed across all clients."""
+        if not known:
+            if self._known_missing(taker):
+                raise QuoteError(409, "deposit first")
+            if not self.lookup_limiter.allow("lookups"):
+                raise QuoteError(429, "too many new accounts at once; try again in a moment")
+        acct = self.cache.view("get_account", {"account_id": taker})
+        if acct is None:
+            self._remember_missing(taker)
+            raise QuoteError(409, "deposit first")
+        return acct
+
+    def _known_missing(self, taker: str) -> bool:
+        with self._no_account_lock:
+            seen = self._no_account.get(taker)
+            return seen is not None and time.monotonic() - seen < NO_ACCOUNT_TTL_S
+
+    def _remember_missing(self, taker: str) -> None:
+        now = time.monotonic()
+        with self._no_account_lock:
+            if len(self._no_account) >= MAX_NO_ACCOUNT:
+                self._no_account = {
+                    t: at for t, at in self._no_account.items() if now - at < NO_ACCOUNT_TTL_S
+                }
+                if len(self._no_account) >= MAX_NO_ACCOUNT:
+                    self._no_account.clear()
+            self._no_account[taker] = now
 
     def _inventory(self) -> inventory.Inventory:
         return inventory.from_snapshot(self.cache.get(), self.quoter, time.time_ns())

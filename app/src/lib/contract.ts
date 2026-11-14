@@ -46,7 +46,7 @@ export interface PositionViewJson {
   size: string;
   mark: string;
   value: string;
-  /** Not in the v1 view. Requested so the UI can show accrued funding (handoff §6). */
+  /** Lets the UI show accrued funding. Absent from the earliest contract version's view. */
   entry_index?: string;
 }
 

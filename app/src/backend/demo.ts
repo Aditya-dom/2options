@@ -570,7 +570,7 @@ export class DemoWorld {
           size: pos.size,
           mark: ser.lastMark,
           value: spot == null ? 0n : legValue(ser.kind, spot, ser.strike, ser.lastMark, pos.size, this.s.params),
-          // The real v1 view omits this (requested from Gaurav); the demo shows what it enables.
+          // The contract's view carries this too; the demo mirrors it.
           entryIndex: pos.entryIndex,
         };
       }),

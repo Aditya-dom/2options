@@ -8,7 +8,7 @@ from twooptions_agent.wire import Underlying
 
 
 def test_half_weights_reproduce_the_paradigm_series() -> None:
-    # c = 1/2 hourly is the earlier project's series (gks2022004/nerf@00fe59b, core/everlasting.py); HANDOFF_GAURAV.md section 2 quotes these.
+    # c = 1/2 hourly is the earlier project's series (gks2022004/nerf@00fe59b, core/everlasting.py).
     hourly = pricing.everlasting(3_500, 3_500, 0.6, True, funding_fraction=0.5, interval_hours=1)
     daily = pricing.everlasting(3_500, 3_500, 0.6, True, funding_fraction=0.5, interval_hours=24)
     assert hourly.price == pytest.approx(12.06, abs=0.01)
@@ -52,7 +52,7 @@ def test_price_and_funding_are_consistent_over_one_interval(c: float, strike: fl
 
 
 def test_mismatched_funding_is_detectably_unfair() -> None:
-    """Half-weight daily price with 1/24 hourly funding (HANDOFF_GAURAV.md option B as written)
+    """Half-weight daily price with 1/24 hourly funding
     prices the option about 50% above what its funding stream is worth."""
     quoted = pricing.everlasting(3_500, 3_500, 0.6, True, funding_fraction=0.5, interval_hours=24)
     fair = pricing.everlasting(3_500, 3_500, 0.6, True, funding_fraction=1 / 24, interval_hours=1)

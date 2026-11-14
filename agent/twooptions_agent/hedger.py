@@ -1,4 +1,4 @@
-"""Delta hedger (#38): keeps a perp position on an external venue equal to the vault's hedge
+"""Delta hedger: keeps a perp position on an external venue equal to the vault's hedge
 target, so LPs carry the spread and funding rather than the direction of the market.
 
     target   = -(sum over series of vault position x delta)        (inventory.py)

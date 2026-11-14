@@ -1,4 +1,4 @@
-"""Vault inventory and net delta (#24), the input to the hedger.
+"""Vault inventory and net delta, the input to the hedger.
 
 Reads state, not events: the contract keeps `net_trader_size` per series exactly (every trade
 and liquidation updates it), the vault holds the opposite side, and `list_series` returns it.
