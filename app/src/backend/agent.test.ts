@@ -1,5 +1,8 @@
 import { expect, test } from 'bun:test';
-import { parseFundingHistory } from './agent';
+import { parseFundingHistory, parseHedge } from './agent';
+import { rowSummary } from '../components/HedgePanel';
+import hedgeFixture from '../../../agent/tests/fixtures/hedge_status.json';
+import type { HedgeJson } from './types';
 import { mergeFundingEvents, type FundingEvent } from '../hooks/useProtocol';
 
 test('funding history rows from the agent parse into the units the panel shows', () => {
@@ -22,4 +25,39 @@ test('merging keeps one row per series and epoch, newest first', () => {
   ]);
   expect(merged.map(e => `${e.series}-${e.epoch}`)).toEqual(['B-2', 'A-2', 'A-1']);
   expect(merged[1].mark).toBe(7n);
+});
+
+// agent/tests/fixtures/hedge_status.json is what Hedger.status() and GET /hedge really return;
+// agent/tests/test_hedger.py fails if the two drift apart.
+test('a running hedger parses into what the Vault page shows', () => {
+  const h = parseHedge(hedgeFixture.enabled as HedgeJson);
+  expect([h.enabled, h.venue, h.network, h.error]).toEqual([true, 'hyperliquid', 'testnet', null]);
+  expect(h.account).toBe('0x1111111111111111111111111111111111111111');
+  expect([h.accountValue, h.deadbandUsd, h.rehedgeMoveBps, h.updatedMs]).toEqual([1000, 25, 50, 1_794_268_865_000]);
+  expect(h.rows).toEqual([{
+    underlying: 'ETH', target: 2.379593, position: 0.9518, gap: 1.427793, band: 0.356531, state: 'trade', reason: 'rebalancing',
+    venueMid: 2100, basisBps: -47.4, unrealizedPnl: 0,
+  }]);
+  // Newest first: the refusal, then the partial fill before it.
+  expect(h.orders.map(o => [o.status, o.side, o.size, o.filled, o.avgPx, o.atMs])).toEqual([
+    ['rejected', 'buy', 1.4277, 0, null, 1_794_268_865_000],
+    ['filled', 'buy', 2.3795, 0.9518, 2100, 1_794_268_860_000],
+  ]);
+  expect(h.orders[0].detail).toContain('Insufficient margin');
+});
+
+test('an agent without a hedger still reports the target, and the panel says it is not hedged', () => {
+  const h = parseHedge(hedgeFixture.disabled as HedgeJson);
+  expect([h.enabled, h.venue, h.account, h.updatedMs, h.accountValue]).toEqual([false, null, null, null, null]);
+  expect(h.rows).toEqual([{
+    underlying: 'ETH', target: 2.379593, position: null, gap: null, band: null, state: null, reason: '', venueMid: null,
+    basisBps: null, unrealizedPnl: null,
+  }]);
+  expect(h.orders).toEqual([]);
+  expect(rowSummary(h.rows[0])).toEqual({ text: 'Not hedged', tone: 'warn' });
+});
+
+test('a hedge on hold is shown as a warning with its reason', () => {
+  const row = { ...parseHedge(hedgeFixture.enabled as HedgeJson).rows[0], state: 'hold' as const, reason: "the contract's spot is stale or missing" };
+  expect(rowSummary(row)).toEqual({ text: "On hold: the contract's spot is stale or missing", tone: 'warn' });
 });

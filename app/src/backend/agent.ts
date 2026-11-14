@@ -9,7 +9,8 @@ import type { Params, QuoteJson, Series, SpotPoint, Underlying } from '../lib/co
 import { everlasting, intrinsicF } from '../lib/pricing';
 import { big, FUNDING_SCALE, NS_PER_MS, nowNs, SPOT_SCALE, USDC_UNIT } from '../lib/units';
 import type {
-  Agent, Attestation, ChainRow, ChainRowJson, FundingHistoryJson, FundingHistoryRow, QuoteRequest, SignedQuote,
+  Agent, AgentHealth, Attestation, ChainRow, ChainRowJson, FundingHistoryJson, FundingHistoryRow, HealthJson, HedgeJson,
+  HedgeStatus, QuoteRequest, SignedQuote,
 } from './types';
 
 export class HttpAgent implements Agent {
@@ -62,6 +63,17 @@ export class HttpAgent implements Agent {
     return rows.map(parseFundingHistory);
   }
 
+  async health(): Promise<AgentHealth> {
+    return parseHealth(await this.get<HealthJson>('/health'));
+  }
+
+  async hedge(): Promise<HedgeStatus | null> {
+    const res = await fetch(`${this.baseUrl}/hedge`, { headers: { Accept: 'application/json' } });
+    if (res.status === 404) return null; // an agent from before the hedger existed
+    if (!res.ok) throw new Error(`agent /hedge: HTTP ${res.status}`);
+    return parseHedge((await res.json()) as HedgeJson);
+  }
+
   async spot(): Promise<Partial<Record<Underlying, SpotPoint>>> {
     const j = await this.get<Partial<Record<Underlying, { price: string; ts_ns: string }>>>('/spot');
     const out: Partial<Record<Underlying, SpotPoint>> = {};
@@ -77,6 +89,66 @@ export const parseFundingHistory = (r: FundingHistoryJson): FundingHistoryRow =>
   perContract: big(r.per_contract),
   atMs: Number(big(r.ts_ns) / NS_PER_MS),
 });
+
+const num = (v: string | number | null | undefined): number | null => {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+const nsToMsNum = (ns: string) => Number(big(ns) / NS_PER_MS);
+
+export function parseHealth(j: HealthJson): AgentHealth {
+  const k = j.keeper;
+  return {
+    keeper: k && {
+      lastSpotPostMs: Object.fromEntries(Object.entries(k.last_spot_post_ns).map(([u, ns]) => [u, nsToMsNum(ns)])),
+      spotHold: k.last_spot_hold,
+      liquidations: k.liquidations,
+      liquidated: (k.liquidated ?? []).map(x => ({ account: x.account, txHash: x.tx_hash, atMs: nsToMsNum(x.ts_ns) })),
+      errors: k.errors,
+    },
+    hedger: j.hedger ?? false,
+  };
+}
+
+/** Venue numbers are for display only, so plain numbers are fine here; nothing is signed from them. */
+export function parseHedge(j: HedgeJson): HedgeStatus {
+  return {
+    enabled: j.enabled,
+    venue: j.venue ?? null,
+    network: j.network ?? null,
+    account: j.account ?? null,
+    updatedMs: j.updated_ns && j.updated_ns !== '0' ? Number(big(j.updated_ns) / NS_PER_MS) : null,
+    error: j.error ?? null,
+    accountValue: num(j.account_value),
+    deadbandUsd: j.limits?.deadband_usd ?? null,
+    rehedgeMoveBps: j.limits?.rehedge_move_bps ?? null,
+    rows: Object.entries(j.underlyings).map(([underlying, r]) => ({
+      underlying,
+      target: r.target,
+      position: num(r.position),
+      gap: r.gap ?? null,
+      band: r.band ?? null,
+      state: r.state ?? null,
+      reason: r.reason ?? '',
+      venueMid: num(r.venue_mid),
+      basisBps: r.basis_bps ?? null,
+      unrealizedPnl: num(r.unrealized_pnl),
+    })),
+    orders: j.orders.map(o => ({
+      atMs: Number(big(o.ts_ns) / NS_PER_MS),
+      coin: o.coin,
+      side: o.side,
+      size: num(o.size) ?? 0,
+      filled: num(o.filled) ?? 0,
+      avgPx: num(o.avg_px),
+      reduceOnly: o.reduce_only,
+      status: o.status,
+      detail: o.detail ?? '',
+    })),
+  };
+}
 
 export interface PricingSources {
   spots(): Promise<Partial<Record<Underlying, SpotPoint>>>;

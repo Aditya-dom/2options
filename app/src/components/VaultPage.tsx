@@ -6,6 +6,7 @@ import { useWallet } from '../hooks/useWallet';
 import { useTheme } from '../theme';
 import { fmtDuration } from './FundingPanel';
 import type { FundsMode } from './FundsDialog';
+import HedgePanel from './HedgePanel';
 import { AmountInput, Button, Empty, Note, Panel, Row, Stat } from './ui';
 
 /** LP shares carry 6 implied decimals (the first deposit mints 1 share unit per USDC micro). */
@@ -13,7 +14,7 @@ const SHARE_DECIMALS = 6;
 
 export default function VaultPage({ onFunds }: { onFunds: (m: FundsMode) => void }) {
   const { t } = useTheme();
-  const { vault, params, series, chain, lpShares, lpClaim, send } = useProtocol();
+  const { vault, params, series, chain, hedge, lpShares, lpClaim, send } = useProtocol();
   const accountId = useWallet(s => s.accountId);
   const signIn = useWallet(s => s.signIn);
   const now = useNow(1_000);
@@ -84,11 +85,15 @@ export default function VaultPage({ onFunds }: { onFunds: (m: FundsMode) => void
           </div>
           <div style={{ marginTop: 12 }}>
             <Note>
-              The vault is the counterparty to every trade and earns the spread and hourly funding. Its net delta is <b>not hedged</b> yet:
-              LPs carry that price risk. The agent reports the perp position that would offset it.
+              The vault is the counterparty to every trade and earns the spread and hourly funding.{' '}
+              {hedge?.enabled
+                ? <>The agent hedges its net delta with a perp position off chain (below); that hedge's profit and loss is <b>not</b> in the equity or share price here.</>
+                : <>Its net delta is <b>not hedged</b>: LPs carry that price risk. The agent reports the perp position that would offset it.</>}
             </Note>
           </div>
         </Panel>
+
+        <HedgePanel />
 
         <Panel title="VAULT BOOK" bodyStyle={{ padding: 0 }}>
           {exposure.length === 0 ? <Empty>No open interest.</Empty> : (
