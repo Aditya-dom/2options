@@ -163,3 +163,89 @@ def test_included_returns_without_an_outcome(monkeypatch: pytest.MonkeyPatch) ->
     fake = FakeRpc([{"final_execution_status": "INCLUDED"}])
     r = account(monkeypatch, fake).call("c.testnet", "post_spot", wait="INCLUDED")
     assert r.logs == [] and r.value is None and r.tx_hash
+
+
+def test_a_rate_limited_endpoint_is_left_at_once_for_the_next(
+    servers: list[HTTPServer], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Waiting on a throttled provider delays a price post another one could take now."""
+    slept: list[float] = []
+    monkeypatch.setattr(rpc.time, "sleep", lambda secs: slept.append(secs) if secs else None)
+    busy, busy_hits, s1 = serve(429)
+    good, good_hits, s2 = serve(200, OK)
+    servers += [s1, s2]
+    assert rpc.post(f"{busy},{good}", PAYLOAD, timeout=2) == OK
+    assert len(busy_hits) == 1 and len(good_hits) == 1 and slept == []
+
+
+def test_when_every_endpoint_is_rate_limiting_it_waits_and_goes_round_again(
+    servers: list[HTTPServer], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    slept: list[float] = []
+    monkeypatch.setattr(rpc.time, "sleep", lambda secs: slept.append(secs) if secs else None)
+    a, a_hits, s1 = serve(429)
+    b, b_hits, s2 = serve(429)
+    servers += [s1, s2]
+    with pytest.raises(TransportError):
+        rpc.post(f"{a},{b}", PAYLOAD, timeout=2, retries=2)
+    assert slept == [0.5, 1.0]  # after each full round but the last
+    assert len(a_hits) == 3 and len(b_hits) == 3
+    # An endpoint that is down, not throttled, is not worth waiting for.
+    del slept[:]
+    c, _, s3 = serve(503)
+    servers.append(s3)
+    with pytest.raises(TransportError):
+        rpc.post(c, PAYLOAD, timeout=2, retries=2)
+    assert slept == []
+
+
+def test_configured_endpoints_come_first_and_the_public_ones_still_follow() -> None:
+    urls = rpc.endpoints(
+        rpc.with_defaults(" https://mine.example/ ,https://test.rpc.fastnear.com", "testnet")
+    )
+    assert urls[:2] == ["https://mine.example", "https://test.rpc.fastnear.com"]
+    assert "https://near-testnet.drpc.org" in urls and len(urls) == len(set(urls)) >= 5
+    assert rpc.endpoints(rpc.with_defaults("", "mainnet"))[0] == "https://near.drpc.org"
+
+
+def test_a_failed_endpoint_rests_and_then_leads_again(
+    servers: list[HTTPServer], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The list is in order of preference. Staying with whichever answered last would leave
+    every request on a slow last resort for as long as it kept answering."""
+    now = {"t": 100.0}
+    monkeypatch.setattr(rpc.time, "monotonic", lambda: now["t"])
+    status = {"fast": 503}
+
+    def fast_server() -> tuple[str, list[int], HTTPServer]:
+        hits: list[int] = []
+
+        class H(BaseHTTPRequestHandler):
+            def do_POST(self) -> None:  # noqa: N802
+                self.rfile.read(int(self.headers["Content-Length"]))
+                hits.append(1)
+                data = json.dumps(OK).encode()
+                self.send_response(status["fast"])
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *a: Any) -> None:
+                pass
+
+        srv = HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        return f"http://127.0.0.1:{srv.server_port}", hits, srv
+
+    fast, fast_hits, s1 = fast_server()
+    slow, slow_hits, s2 = serve(200, OK)
+    servers += [s1, s2]
+    urls = f"{fast},{slow}"
+    assert rpc.post(urls, PAYLOAD, timeout=2) == OK  # fast is down: slow serves
+    status["fast"] = 200  # fast recovers at once, but it is resting
+    assert rpc.post(urls, PAYLOAD, timeout=2) == OK
+    assert (len(fast_hits), len(slow_hits)) == (1, 2)
+    now["t"] += rpc.REST_S + 1  # its rest is over: it leads again
+    assert rpc.post(urls, PAYLOAD, timeout=2) == OK
+    assert rpc.post(urls, PAYLOAD, timeout=2) == OK
+    assert (len(fast_hits), len(slow_hits)) == (3, 2)
