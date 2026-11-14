@@ -65,7 +65,7 @@ export interface Backend {
 }
 
 // ---------------------------------------------------------------------------------------------
-// Agent HTTP API (HANDOFF_ADITYA.md §5, proposed). Units as in the contract.
+// Agent HTTP API (agent/README.md). Units as in the contract.
 // ---------------------------------------------------------------------------------------------
 
 export interface ChainRowJson {
@@ -107,7 +107,7 @@ export interface QuoteRequest {
   taker: string;
 }
 
-/** `GET /attestation` (proposed, HANDOFF_GAURAV.md §4). TEE fields arrive with the Shade Agent (#34). */
+/** `GET /attestation`. The TEE fields are present when the agent runs in a TEE and is told its image hash. */
 export interface Attestation {
   agent_public_key: string;
   code_hash?: string;
@@ -233,8 +233,8 @@ export interface HealthJson {
     last_funding_epoch: Record<string, number>;
     liquidations: number;
     liquidated?: { account: string; liquidator?: string; tx_hash: string; ts_ns: string }[];
-    /** The liquidation scan. Absent from agents older than the budgeted scan. */
-    watch?: { accounts: number; with_positions: number; due: number; behind_s: number };
+    /** The liquidation scan. `source` is `contract` when the contract lists its accounts, else `watch list`. Absent from older agents. */
+    watch?: { source?: string; accounts: number; with_positions?: number; due?: number; round_s?: number; page?: number; behind_s: number };
     errors: Record<string, string>;
   } | null;
   hedger?: boolean;
@@ -250,8 +250,13 @@ export interface AgentHealth {
     /** Liquidations since the agent started, and the most recent ones. */
     liquidations: number;
     liquidated: { account: string; txHash: string; atMs: number }[];
-    /** The liquidation scan: accounts watched, how many hold positions, and how late the most overdue read of one of those is. Null when the agent does not report it. */
-    watch: { accounts: number; withPositions: number; behindS: number } | null;
+    /**
+     * The liquidation scan: accounts covered and how far behind its rhythm it is. `fromContract`
+     * is true when the contract lists its accounts, so every account is covered; otherwise only
+     * the accounts this agent has quoted for are, and `withPositions` says how many hold any.
+     * Null when the agent does not report it.
+     */
+    watch: { accounts: number; withPositions: number | null; behindS: number; fromContract: boolean } | null;
     /** The last failure of each job (`spot`, `funding`, `liquidations`) that has not succeeded since. */
     errors: Record<string, string>;
   } | null;

@@ -1,4 +1,4 @@
-"""Keeper (#23): posts spot, settles hourly funding and liquidates accounts that can no longer
+"""Keeper: posts spot, settles hourly funding and liquidates accounts that can no longer
 carry their positions (shorts under the margin ratio, longs that cannot pay their funding).
 
 Three jobs on one thread, each isolated: a failure in one is logged and retried on its next
@@ -6,9 +6,14 @@ turn and never stops the others. All of them go through one NEAR account, one tr
 time, because access-key nonces must increase one by one.
 
 No job may hold the thread for long, because the spot must be posted every few seconds or the
-contract stops trading. Funding settles one series per pass, and the liquidation scan reads
-accounts for a bounded time per pass: the contract cannot list its accounts, so each one is a
-separate RPC read, and a long watch list is worked through over several passes.
+contract stops trading. Funding settles one series per pass, and the liquidation scan reads for
+a bounded time per pass.
+
+The scan has two forms. A contract that keeps an index of its accounts is asked, a page at a
+time, which of them it would let be liquidated (`list_liquidatable`): the contract applies its
+own test, so every account is covered and nothing here depends on a file. A contract from
+before the index cannot list its accounts, so there the keeper reads, one RPC call each, the
+accounts this agent has quoted for (its watch list), most urgent first.
 
 What the keeper can and cannot do: it relays messages signed by the agent key. The contract
 checks every signature and bounds every number, so a keeper bug can delay a spot or a funding
@@ -79,6 +84,11 @@ class KeeperConfig:
     #: An account this agent quoted may be about to trade, so for this long it is read as if it
     #: held positions.
     quoted_watch_s: float = 180.0
+    #: Accounts per `list_liquidatable` call. Halved when a call runs out of gas.
+    liquidation_page: int = 100
+    #: How long to wait before asking a contract without the account index whether it has
+    #: been upgraded.
+    reprobe_s: float = 600.0
     #: Wait this long into a new epoch before settling it, so a slightly fast local clock cannot
     #: name an epoch the chain has not reached ("epoch is not current").
     settle_delay_s: float = 15.0
@@ -94,7 +104,7 @@ class KeeperStatus:
     liquidated: list[dict[str, str]] = field(default_factory=list)
     #: The liquidation scan: accounts watched, how many hold positions, how many reads are
     #: due, and how late the most overdue read of an account with positions is, in seconds.
-    watch: dict[str, float] = field(default_factory=dict)
+    watch: dict[str, object] = field(default_factory=dict)
     errors: dict[str, str] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, object]:
@@ -124,6 +134,15 @@ class Watch:
     due: float = 0.0  # when to read it next, on the keeper's clock; 0 is "now"
     tier: int = OPEN
     quoted: float = float("-inf")  # when this agent last quoted it
+
+
+#: What an RPC node answers when a contract has no such method: a contract from before the index.
+NO_SUCH_METHOD = ("MethodNotFound", "MethodResolveError")
+#: What it answers when a view ran out of gas: the page was too large.
+OUT_OF_GAS = ("GasLimitExceeded", "GasExceeded", "Exceeded the prepaid gas")
+MIN_PAGE = 5
+#: Account ids per `index_accounts` call (the contract accepts up to 100).
+INDEX_BATCH = 50
 
 
 def pending_funding(positions: list[dict[str, Any]], snap: Snapshot) -> int:
@@ -170,6 +189,15 @@ class Keeper:
         self._clock = clock
         self._watch: dict[str, Watch] = {}
         self._watch_lock = threading.Lock()
+        #: Whether the contract keeps an index of its accounts; None until it has been asked.
+        self._indexed: bool | None = None
+        self._probed = float("-inf")
+        self._cursor = 0
+        self._page = self.cfg.liquidation_page
+        self._round_done = clock()
+        self._round_s = 0.0
+        #: Watch-list accounts not yet offered to the contract's index (None: not yet read).
+        self._backfill: list[str] | None = None
         self._report_watch()  # so /health has the fields before the first turn of the scan
 
     # -- spot ---------------------------------------------------------------------------------
@@ -315,6 +343,103 @@ class Keeper:
                 w.due = min(w.due, w.quoted + self.cfg.recheck_s)
 
     def tick_liquidations(self) -> None:
+        """One turn of the scan, through the contract's index when it has one."""
+        if self._has_index():
+            self._scan_index()
+        else:
+            self._scan_watch_list()
+
+    def _has_index(self) -> bool:
+        """Whether the contract lists its accounts. A contract without the index is asked again
+        now and then, so an upgrade is picked up without a restart."""
+        now = self._clock()
+        if self._indexed is None or (
+            not self._indexed and now - self._probed >= self.cfg.reprobe_s
+        ):
+            try:
+                self.cache.view("get_account_count", None)
+            except Exception as e:
+                if not any(m in str(e) for m in NO_SUCH_METHOD):
+                    raise  # the RPC failed: still unknown, ask again next turn
+                if self._indexed is None:
+                    log.warning(
+                        "the contract has no account index: liquidations cover only the "
+                        "accounts this agent has quoted for"
+                    )
+                self._indexed = False
+            else:
+                if not self._indexed:
+                    log.info("the contract lists its accounts: scanning through its index")
+                self._indexed = True
+            self._probed = now
+        return bool(self._indexed)
+
+    def _scan_index(self) -> None:
+        """Ask the contract, a page at a time, which accounts it would let be liquidated, and
+        liquidate them. The pages of one round are spread over as many turns as they need."""
+        started = self._clock()
+        if self._offer_watch_list():
+            return  # that was a transaction: the turn's time is spent
+        total = int(self.cache.view("get_account_count", None))
+        first_error: Exception | None = None
+        pages = 0
+        while total and not (pages and self._clock() - started >= self.cfg.liquidation_budget_s):
+            try:
+                ids = self.cache.view(
+                    "list_liquidatable", {"from_index": self._cursor, "limit": self._page}
+                )
+            except Exception as e:
+                if any(m in str(e) for m in OUT_OF_GAS) and self._page > MIN_PAGE:
+                    self._page = max(MIN_PAGE, self._page // 2)
+                    log.warning("list_liquidatable ran out of gas: page is now %d", self._page)
+                    break  # the same accounts again next turn, in smaller pages
+                raise
+            pages += 1
+            self._cursor += self._page
+            for account_id in ids:
+                if account_id == self.sender.account_id:
+                    continue
+                try:
+                    self._liquidate(account_id)
+                except Exception as e:  # one account failing must not hide the others
+                    first_error = first_error or e
+            if self._cursor >= total:
+                now = self._clock()
+                self._cursor, self._round_s, self._round_done = 0, now - self._round_done, now
+                break  # one round at most per turn
+            if ids:
+                break  # liquidating took the turn's time
+        if not total:
+            self._round_done = self._clock()
+        self.status.watch = {
+            "source": "contract",
+            "accounts": total,
+            "page": self._page,
+            "round_s": round(self._round_s, 1),
+            "behind_s": round(max(0.0, self._clock() - self._round_done - self.cfg.recheck_s), 1),
+        }
+        if first_error is not None:
+            raise first_error
+
+    def _offer_watch_list(self) -> bool:
+        """Accounts opened before the contract kept its index are not in it until they act or
+        are added. Offer the ones this agent knows, one batch per turn; the contract adds those
+        that exist and are not listed yet. Returns whether a batch was sent."""
+        if self._backfill is None:
+            self._backfill = self.store.takers()
+        if not self._backfill:
+            return False
+        batch = self._backfill[:INDEX_BATCH]
+        res = self.sender.call(
+            self.contract_id, "index_accounts", {"account_ids": batch}, gas=100 * TGAS
+        )
+        del self._backfill[:INDEX_BATCH]
+        log.info(
+            "offered %d watch-list accounts to the contract's index in %s", len(batch), res.tx_hash
+        )
+        return True
+
+    def _scan_watch_list(self) -> None:
         """One turn of the scan: read the accounts that are due, most urgent first, until the
         turn's time is up. An account whose read or liquidation fails is tried again on its
         next turn; the first such error is raised once the others have had theirs."""
@@ -364,6 +489,7 @@ class Keeper:
             watched = list(self._watch.values())
         late = [now - w.due for w in watched if w.tier != IDLE and w.due > 0]
         self.status.watch = {
+            "source": "watch list",
             "accounts": len(watched),
             "with_positions": sum(w.tier != IDLE for w in watched),
             "due": sum(w.due <= now for w in watched),
@@ -395,6 +521,14 @@ class Keeper:
                 else equity < NEAR_EQUITY
             )
             return NEAR if near else OPEN
+        self._liquidate(
+            account_id, f"equity {equity} after {owed} of funding owed, requirement {req}"
+        )
+        return NEAR  # read it again at once: it may need a second pass, or be gone
+
+    def _liquidate(self, account_id: str, why: str = "named by the contract") -> None:
+        """Send `liquidate` for one account and record it. An account that recovered between
+        the read and the call is not an error."""
         try:
             res = self.sender.call(
                 self.contract_id, "liquidate", {"account_id": account_id}, gas=100 * TGAS
@@ -408,7 +542,7 @@ class Keeper:
                     self.sender.account_id,
                 )
             if "not liquidatable" in str(e):
-                return NEAR  # recovered between the view and the call
+                return
             raise
         self.status.liquidations += 1
         self.status.liquidated.insert(
@@ -421,15 +555,7 @@ class Keeper:
             },
         )
         del self.status.liquidated[20:]
-        log.warning(
-            "liquidated %s in %s (equity %d after %d of funding owed, requirement %d)",
-            account_id,
-            res.tx_hash,
-            equity,
-            owed,
-            req,
-        )
-        return NEAR  # read it again at once: it may need a second pass, or be gone
+        log.warning("liquidated %s in %s (%s)", account_id, res.tx_hash, why)
 
     # -- loop ---------------------------------------------------------------------------------
 

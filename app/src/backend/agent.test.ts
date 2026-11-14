@@ -65,7 +65,8 @@ test('a hedge on hold is shown as a warning with its reason', () => {
 test('the keeper\'s liquidation scan is read from /health when it is complete, and ignored otherwise', () => {
   const keeper = { last_spot_post_ns: {}, last_spot_hold: {}, last_funding_epoch: {}, liquidations: 0, errors: {} };
   const health = (watch?: object) => parseHealth({ ok: true, paused: false, series: 10, spot_age_s: {}, keeper: { ...keeper, watch } as HealthJson['keeper'] });
-  expect(health({ accounts: 12, with_positions: 7, due: 1, behind_s: 2.5 }).keeper?.watch).toEqual({ accounts: 12, withPositions: 7, behindS: 2.5 });
+  expect(health({ source: 'watch list', accounts: 12, with_positions: 7, due: 1, behind_s: 2.5 }).keeper?.watch).toEqual({ accounts: 12, withPositions: 7, behindS: 2.5, fromContract: false });
+  expect(health({ source: 'contract', accounts: 4, page: 100, round_s: 3.1, behind_s: 0 }).keeper?.watch).toEqual({ accounts: 4, withPositions: null, behindS: 0, fromContract: true });
   expect(health().keeper?.watch).toBeNull();   // an agent from before the scan reported itself
   expect(health({}).keeper?.watch).toBeNull(); // one that has not filled it in
 });

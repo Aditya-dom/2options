@@ -444,6 +444,7 @@ def test_the_scan_reports_how_far_behind_it_is() -> None:
     rig, clock, _ = scanning_rig(per_read=1.0)  # two reads a turn
     # Every field is there from the start, before the scan has had a turn.
     assert rig.keeper.status.to_json()["watch"] == {
+        "source": "watch list",
         "accounts": 0,
         "with_positions": 0,
         "due": 0,
@@ -469,3 +470,211 @@ def test_a_liquidated_account_is_read_again_at_once_and_dropped_when_it_is_gone(
     rig.keeper.tick_liquidations()
     assert reads == ["sick.testnet", "sick.testnet"]
     assert rig.store.takers() == [] and rig.keeper.status.watch["accounts"] == 0
+
+
+# -- the scan through the contract's own index -------------------------------------------------
+
+
+def indexed_rig(per_read: float = 0.2) -> tuple[Rig, Clock, list[tuple[str, dict]]]:
+    """A rig on a contract that keeps the account index. Every view of the index takes time
+    and is recorded."""
+    rig, clock, views = Rig(), Clock(), []
+    rig.chain.index = []
+    rig.keeper = Keeper(
+        CONTRACT, rig.chain, KEY, rig.cache, rig.quoter, rig.feed, rig.store, clock=clock
+    )
+    view = rig.cache.view
+
+    def timed(method: str, args: dict | None = None):  # type: ignore[no-untyped-def]
+        if method in ("list_liquidatable", "get_account"):
+            clock.t += per_read
+            views.append((method, dict(args or {})))
+        return view(method, args)
+
+    rig.cache.view = timed
+    return rig, clock, views
+
+
+def open_accounts(rig: Rig, accounts: dict[str, dict]) -> None:
+    """Accounts that exist on chain and are in the contract's index. None has asked this
+    agent for a quote, so none is on its watch list."""
+    rig.chain.accounts = {"keeper.testnet": account(10**6, 0, positions=0), **accounts}
+    rig.chain.index = list(rig.chain.accounts)
+
+
+def liquidated(rig: Rig) -> list[str]:
+    return [a["account_id"] for m, a in rig.chain.calls if m == "liquidate"]
+
+
+def test_with_an_index_every_account_is_covered_whether_or_not_this_agent_quoted_it() -> None:
+    rig, _, views = indexed_rig()
+    open_accounts(
+        rig,
+        {
+            "healthy.testnet": account(1_200, 1_000),
+            "edge.testnet": account(1_150, 1_000),  # exactly 1.15: not liquidatable
+            "sick.testnet": account(1_149, 1_000),
+        },
+    )
+    assert rig.store.takers() == []  # the watch list is empty: a wiped data directory
+    rig.keeper.tick_liquidations()
+    assert liquidated(rig) == ["sick.testnet"]
+    assert rig.keeper.status.liquidations == 1
+    # One call asked about all four accounts; none was read one by one.
+    assert [m for m, _ in views] == ["list_liquidatable"]
+    assert rig.keeper.status.to_json()["watch"]["source"] == "contract"
+
+
+def test_a_long_out_of_cash_is_found_through_the_index_too() -> None:
+    rig, _, _ = indexed_rig()
+    rig.chain.series["ETH-2100-C"]["funding_index"] = "480001"
+    open_accounts(
+        rig,
+        {
+            "broke.testnet": holder(0, 0, position(1_000_000)),
+            "exact.testnet": holder(480_001, 0, position(1_000_000)),
+            "short_by_a_micro.testnet": holder(480_000, 0, position(1_000_000)),
+        },
+    )
+    rig.keeper.tick_liquidations()
+    assert liquidated(rig) == ["broke.testnet", "short_by_a_micro.testnet"]
+
+
+def test_the_keeper_never_liquidates_itself() -> None:
+    rig, _, _ = indexed_rig()
+    open_accounts(rig, {})
+    rig.chain.accounts["keeper.testnet"] = account(1, 1_000)
+    rig.keeper.tick_liquidations()
+    assert liquidated(rig) == []
+
+
+def test_a_large_index_is_paged_within_the_turns_budget_and_a_round_covers_everyone() -> None:
+    rig, clock, views = indexed_rig(per_read=0.5)
+    open_accounts(rig, {f"a{i:04}.testnet": account(2_000, 1_000) for i in range(1_000)})
+    rig.chain.accounts["a0777.testnet"] = account(1_000, 1_000)
+    turns = 0
+    while not liquidated(rig):
+        started = clock.t
+        rig.keeper.tick_liquidations()
+        assert clock.t - started <= rig.keeper.cfg.liquidation_budget_s + 0.5
+        clock.t += 1.0
+        turns += 1
+        assert turns < 10
+    assert liquidated(rig) == ["a0777.testnet"]
+    # 1,001 accounts at 100 a call: the eighth call found it, in the second turn.
+    assert [a["from_index"] for _, a in views] == [0, 100, 200, 300, 400, 500, 600, 700]
+    assert turns == 2
+
+    # A full round then visits every page once and starts again from the top.
+    del views[:]
+    for _ in range(6):
+        rig.keeper.tick_liquidations()
+        clock.t += 1.0
+    starts = [a["from_index"] for _, a in views]
+    assert starts[:3] == [800, 900, 1000] and starts[3] == 0
+    w = rig.keeper.status.to_json()["watch"]
+    assert w["accounts"] == 1_001 and w["behind_s"] == 0.0 and w["round_s"] > 0
+
+
+def test_a_page_that_runs_out_of_gas_is_halved_and_the_accounts_are_not_skipped() -> None:
+    rig, clock, views = indexed_rig()
+    open_accounts(rig, {f"a{i:03}.testnet": account(2_000, 1_000) for i in range(60)})
+    rig.chain.accounts["a001.testnet"] = account(1_000, 1_000)
+    rig.chain.max_page = 30
+    rig.keeper.tick_liquidations()  # 100 is too many
+    assert liquidated(rig) == []
+    clock.t += 1.0
+    rig.keeper.tick_liquidations()  # 50 still is
+    clock.t += 1.0
+    rig.keeper.tick_liquidations()  # 25 fits, starting from the same place
+    assert liquidated(rig) == ["a001.testnet"]
+    assert [(a["from_index"], a["limit"]) for _, a in views] == [(0, 100), (0, 50), (0, 25)]
+    assert rig.keeper.status.to_json()["watch"]["page"] == 25
+
+
+def test_the_watch_list_is_offered_to_the_index_so_older_accounts_are_not_missed() -> None:
+    """After the upgrade the index is empty. An account opened before it is listed only once
+    it acts or is added, and an underwater account does not act."""
+    rig, clock, _ = indexed_rig()
+    rig.chain.accounts = {
+        "keeper.testnet": account(10**6, 0, positions=0),
+        "old_sick.testnet": account(1_000, 1_000),
+    }
+    for i in range(60):
+        rig.chain.accounts[f"old{i:02}.testnet"] = account(2_000, 1_000)
+    for a in rig.chain.accounts:
+        rig.store.add_taker(a)
+    rig.store.add_taker("closed.testnet")  # on the list, but its account is gone
+    assert rig.chain.index == []
+
+    per_turn = []
+    for _ in range(4):
+        before = len(rig.chain.calls)
+        rig.keeper.tick_liquidations()
+        per_turn.append([m for m, _ in rig.chain.calls[before:]])
+        clock.t += 1.0
+    # Fifty at a time, one transaction a turn, then the scan finds what was added.
+    assert per_turn == [["index_accounts"], ["index_accounts"], ["liquidate"], []]
+    assert sorted(rig.chain.index) == sorted(rig.chain.accounts)
+    assert liquidated(rig) == ["old_sick.testnet"]
+
+
+def test_a_contract_without_the_index_is_scanned_from_the_watch_list_and_asked_again_later() -> (
+    None
+):
+    rig, clock, views = indexed_rig()
+    rig.chain.index = None  # an older contract
+    rig.chain.accounts = {
+        "keeper.testnet": account(10**6, 0, positions=0),
+        "sick.testnet": account(1_000, 1_000),
+        "unseen.testnet": account(1_000, 1_000),  # never quoted by this agent
+    }
+    rig.store.add_taker("sick.testnet")
+    rig.keeper.tick_liquidations()
+    assert liquidated(rig) == ["sick.testnet"]
+    assert rig.keeper.status.to_json()["watch"]["source"] == "watch list"
+    assert [m for m, _ in views] == ["get_account"]
+
+    # The contract is upgraded while the agent runs. Within ten minutes the keeper notices,
+    # offers its watch list, and the account it had never heard of is covered.
+    rig.chain.index = ["keeper.testnet", "sick.testnet", "unseen.testnet"]
+    clock.t += 30.0
+    rig.keeper.tick_liquidations()
+    assert liquidated(rig) == ["sick.testnet"]  # not asked again yet
+    clock.t += 600.0
+    rig.keeper.tick_liquidations()  # offers the watch list
+    clock.t += 1.0
+    rig.keeper.tick_liquidations()
+    assert liquidated(rig) == ["sick.testnet", "unseen.testnet"]
+    assert rig.keeper.status.to_json()["watch"]["source"] == "contract"
+
+
+def test_an_rpc_failure_is_not_taken_for_a_contract_without_the_index() -> None:
+    rig, clock, _ = indexed_rig()
+    open_accounts(rig, {"sick.testnet": account(1_000, 1_000)})
+    inner = rig.cache.view
+    down = {"on": True}
+
+    def flaky(method: str, args: dict | None = None):  # type: ignore[no-untyped-def]
+        if down["on"] and method == "get_account_count":
+            raise RuntimeError("rpc: HTTP 429")
+        return inner(method, args)
+
+    rig.cache.view = flaky
+    with pytest.raises(RuntimeError):
+        rig.keeper.tick_liquidations()
+    down["on"] = False
+    clock.t += 3.0
+    rig.keeper.tick_liquidations()  # asked again at once, not in ten minutes
+    assert liquidated(rig) == ["sick.testnet"]
+
+
+def test_the_index_scan_reports_when_a_round_is_overdue() -> None:
+    rig, clock, _ = indexed_rig(per_read=2.5)  # one page a turn
+    open_accounts(rig, {f"a{i:04}.testnet": account(2_000, 1_000) for i in range(1_500)})
+    for _ in range(12):
+        rig.keeper.tick_liquidations()
+        clock.t += 1.0
+    w = rig.keeper.status.to_json()["watch"]
+    # 16 pages at 3.5 s a turn is a 56 s round against a 15 s target; 12 turns in, it is late.
+    assert 20 < w["behind_s"] < 45

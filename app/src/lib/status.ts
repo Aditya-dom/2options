@@ -190,12 +190,15 @@ function keeper(i: StatusInput, nowMs: number): Check {
   const held = Object.entries(k.spotHold)[0];
   if (held) return { ...base, level: 'warn', summary: `Holding back the ${held[0]} price instead of posting it: ${held[1]}` };
   if (k.watch && k.watch.behindS > SCAN_LATE_S) {
-    return { ...base, level: 'warn', summary: `The liquidation scan is ${Math.round(k.watch.behindS)} s behind: ${k.watch.withPositions} accounts hold positions, more than it reads in time. An account that falls below its margin is closed later than it should be.` };
+    const load = k.watch.withPositions != null ? `${k.watch.withPositions} accounts hold positions, more than it reads in time` : `a round over ${k.watch.accounts} accounts is taking too long`;
+    return { ...base, level: 'warn', summary: `The liquidation scan is ${Math.round(k.watch.behindS)} s behind: ${load}. An account that falls below its margin is closed later than it should be.` };
   }
   const last = Math.max(0, ...Object.values(k.lastSpotPostMs));
   const posted = last > 0 ? `last price sent ${secs(nowMs - last)} ago` : 'no price sent yet';
   const liq = k.liquidations === 1 ? '1 liquidation' : `${k.liquidations} liquidations`;
-  const watching = k.watch ? `; watching ${k.watch.accounts === 1 ? '1 account' : `${k.watch.accounts} accounts`}` : '';
+  const count = k.watch && (k.watch.accounts === 1 ? '1 account' : `${k.watch.accounts} accounts`);
+  // A contract without the account index cannot be asked who is liquidatable, so only accounts this agent has quoted for are covered.
+  const watching = !k.watch ? '' : k.watch.fromContract ? `; watching all ${count} on the contract` : `; watching the ${count} it has quoted for`;
   return { ...base, level: 'ok', summary: `Running: ${posted}; ${liq} since it started${watching}.` };
 }
 

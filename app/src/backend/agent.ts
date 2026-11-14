@@ -1,5 +1,5 @@
 /**
- * Agent clients. `HttpAgent` talks to Gaurav's quote server (HANDOFF_ADITYA.md §5).
+ * Agent clients. `HttpAgent` talks to the agent's quote server (agent/README.md).
  * `PricingAgent` prices locally with the same everlasting model; its quotes carry no valid
  * signature, so it can only trade against the in-browser demo contract.
  */
@@ -116,7 +116,9 @@ export function parseHealth(j: HealthJson): AgentHealth {
       spotHold: k.last_spot_hold,
       liquidations: k.liquidations,
       liquidated: (k.liquidated ?? []).map(x => ({ account: x.account, txHash: x.tx_hash, atMs: nsToMsNum(x.ts_ns) })),
-      watch: typeof k.watch?.accounts === 'number' ? { accounts: k.watch.accounts, withPositions: k.watch.with_positions, behindS: k.watch.behind_s } : null,
+      watch: typeof k.watch?.accounts === 'number'
+        ? { accounts: k.watch.accounts, withPositions: k.watch.with_positions ?? null, behindS: k.watch.behind_s, fromContract: k.watch.source === 'contract' }
+        : null,
       errors: k.errors,
     },
     hedger: j.hedger ?? false,

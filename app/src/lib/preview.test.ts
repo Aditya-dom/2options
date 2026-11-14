@@ -28,7 +28,7 @@ test('buying a call needs only the premium and has no requirement', () => {
   expect(p.failure).toBeNull();
 });
 
-test('a short ATM call needs about $1,100 at 3,500 (handoff §6)', () => {
+test('a short ATM call needs about $1,100 at 3,500', () => {
   const trade = { series: call3500.id, side: 'Sell' as const, size: SIZE_SCALE, price: 12n * USDC_UNIT };
   // +20% shock = $700 intrinsic, plus 1% of spot reserve = $735 requirement. Equity after the
   // fill is collateral + $12 premium − $12 short mark, so it must reach 1.5 × 735 = $1,102.50.

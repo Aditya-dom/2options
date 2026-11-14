@@ -1,4 +1,4 @@
-"""Everlasting option pricing and a small vol surface for the quoter (#20).
+"""Everlasting option pricing and a small vol surface for the quoter.
 
 Prior work, disclosed: the Black-Scholes and everlasting-series code is a port of
 `core/black_scholes.py`, `core/everlasting.py` and the skew/smile idea in

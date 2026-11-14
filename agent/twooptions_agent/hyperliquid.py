@@ -1,4 +1,4 @@
-"""Hyperliquid perps for the hedger (#38): signing and the handful of REST calls it needs.
+"""Hyperliquid perps for the hedger: signing and the handful of REST calls it needs.
 
 Kept to the standard library plus `cryptography`, like the rest of the agent, so there is no
 exchange SDK to audit or to ship inside a TEE image. Three pieces are written out here that an

@@ -1,6 +1,6 @@
 # 2Options app (NEAR)
 
-React + Vite frontend for the 2Options contract (`contracts/twooptions`). It replaces our earlier Solana/Privy frontend (see the README's prior-work section).
+React + Vite frontend for the 2Options contract (`contracts/twooptions`). 
 
 ```bash
 cd app
@@ -17,29 +17,29 @@ With no configuration the app runs a **demo**: the contract, agent and market ar
 | `VITE_CONTRACT_ID` | `VITE_AGENT_URL` | Contract | Prices and quotes |
 |---|---|---|---|
 | unset | (ignored) | in-browser demo (`src/backend/demo.ts`) | local pricing; trades accepted |
-| set | set | testnet via RPC + Wallet Selector | Gaurav's agent |
+| set | set | testnet via RPC + Wallet Selector | the agent |
 | set | unset | testnet | local pricing for display; **trading disabled** (only the agent can sign quotes) |
 
 `VITE_USDC_ID` is required whenever `VITE_CONTRACT_ID` is set. The app refuses to start half-configured.
 
 The demo mirrors `lib.rs` step by step: same checks, same rounding, same panic strings. It skips only signature verification. Two deliberate differences: funding settles every **2 minutes** instead of hourly, and the LP cooldown is 5 minutes, so both are visible in a demo. State persists in `localStorage`; **RESET DEMO** clears it.
 
-## What works
+## Screens
 
-| Screen | Issue | Notes |
-|---|---|---|
-| Wallet login | #26 | Meteor, HOT, MyNearWallet. Sign-in adds a function-call key for `trade`, `withdraw`, `lp_request_redeem`, `lp_claim`, so trades sign without a popup inside the 10 s quote window. |
-| Deposit / withdraw | #26, #27 | `ft_transfer_call` with 1 yocto and 100 TGas. Withdraw checks USDC storage registration first and offers `storage_deposit`. The max withdrawable amount is computed at the 1.5× initial ratio. |
-| Option chain | #28 | Bid, ask, delta, funding per hour. A zero bid is not sellable. |
-| Trade ticket | #28 | Indicative price → firm quote with a countdown → `trade(quote, signature)` passed through untouched. A margin preview replays `trade()`'s checks and blocks quotes the contract would reject. Shows instant P&L vs spot. |
-| Positions + margin health | #29 | Close value at the bid or ask, the contract's margin value, funding per hour, and health against the 1.15 / 1.30 / 1.50 tiers read from `get_params`. One click closes a position. |
-| Funding | #29 | Countdown, per-series rate and index, and recent settlements: from the agent's `/funding/history` when there is one, otherwise those observed this session. |
-| Delta hedge | #38 | On the Vault page, from the agent's `GET /hedge`: target, the perp position held on Hyperliquid, what is still unhedged, the venue price and its basis to the contract's spot, collateral on the venue, and recent hedge orders. It always states that the hedge is in an operator-held exchange account outside the contract and that its P&L is not in the share price. It shows `OFF` when the agent has no hedger, `NOT UPDATING` when the hedger's last pass failed or it has been silent for a minute, and nothing in demo mode. |
-| Status | — | `#/status`: OPERATIONAL, DEGRADED, DOWN or OFF for each component (contract, price feed, ledger, quote server, agent key, keeper, funding settlement, LP vault, delta hedge), an overall verdict, recent liquidations with their transactions, and the deployment's addresses. Only what is needed to trade can cause an outage. The rules are in `src/lib/status.ts`, one test each. It reads the agent's `/health` and the contract's `get_solvency` itself, so the other screens' polling is unchanged. `bun scripts/live_status.ts` prints the same verdict for a live deployment in a terminal. |
-| LP vault | #30 | Equity, share price, vault health, net delta from the agent's deltas, vault book, deposit, redeem, and claim with a cooldown countdown. States that hedge P&L is not in the share price. |
-| Strategy builder | #31 | Presets (straddle, strangle, spreads, risk reversal, short strangle) and editable legs. Shows net debit or credit, funding per hour, net delta and gamma, package margin, and P&L vs spot now and after a day of funding. All legs execute in **one transaction** (a `trade` action per leg, buys first), so every leg fills or none does. A batch needs one wallet confirmation, because limited access keys sign single-action transactions only. |
-| Deposit from another chain | #33 | SOL, ETH, USDC (Solana, Ethereum, Base, Arbitrum) and BTC through NEAR Intents 1Click. Swaps to native USDC in the user's NEAR wallet, then offers a one-click deposit. Live quotes in every mode. A real deposit address is only issued on a mainnet deployment using native USDC, because 1Click is mainnet only. Pending swaps survive reloads. |
-| Agent badge | #35 | Every quote is verified in the browser (same digest as the contract) against the agent key, and the key against `is_agent_key`. Quotes from any other key are refused. The TEE code hash and quote show once `/attestation` provides them (#34). |
+| Screen | Notes |
+| --- | --- |
+| Wallet login | Meteor, HOT, MyNearWallet. Sign-in adds a function-call key for `trade`, `withdraw`, `lp_request_redeem`, `lp_claim`, so trades sign without a popup inside the 10 s quote window. |
+| Deposit / withdraw | `ft_transfer_call` with 1 yocto and 100 TGas. Withdraw checks USDC storage registration first and offers `storage_deposit`. The max withdrawable amount is computed at the 1.5× initial ratio. |
+| Option chain | Bid, ask, delta, funding per hour. A zero bid is not sellable. |
+| Trade ticket | Indicative price → firm quote with a countdown → `trade(quote, signature)` passed through untouched. A margin preview replays `trade()`'s checks and blocks quotes the contract would reject. Shows instant P&L vs spot. |
+| Positions + margin health | Close value at the bid or ask, the contract's margin value, funding per hour, and health against the 1.15 / 1.30 / 1.50 tiers read from `get_params`. One click closes a position. |
+| Funding | Countdown, per-series rate and index, and recent settlements: from the agent's `/funding/history` when there is one, otherwise those observed this session. |
+| Delta hedge | On the Vault page, from the agent's `GET /hedge`: target, the perp position held on Hyperliquid, what is still unhedged, the venue price and its basis to the contract's spot, collateral on the venue, and recent hedge orders. It always states that the hedge is in an operator-held exchange account outside the contract and that its P&L is not in the share price. It shows `OFF` when the agent has no hedger, `NOT UPDATING` when the hedger's last pass failed or it has been silent for a minute, and nothing in demo mode. |
+| Status | `#/status`: OPERATIONAL, DEGRADED, DOWN or OFF for each component (contract, price feed, ledger, quote server, agent key, keeper, funding settlement, LP vault, delta hedge), an overall verdict, recent liquidations with their transactions, and the deployment's addresses. Only what is needed to trade can cause an outage. The rules are in `src/lib/status.ts`, one test each. It reads the agent's `/health` and the contract's `get_solvency` itself, so the other screens' polling is unchanged. `bun scripts/live_status.ts` prints the same verdict for a live deployment in a terminal. |
+| LP vault | Equity, share price, vault health, net delta from the agent's deltas, vault book, deposit, redeem, and claim with a cooldown countdown. States that hedge P&L is not in the share price. |
+| Strategy builder | Presets (straddle, strangle, spreads, risk reversal, short strangle) and editable legs. Shows net debit or credit, funding per hour, net delta and gamma, package margin, and P&L vs spot now and after a day of funding. All legs execute in **one transaction** (a `trade` action per leg, buys first), so every leg fills or none does. A batch needs one wallet confirmation, because limited access keys sign single-action transactions only. |
+| Deposit from another chain | SOL, ETH, USDC (Solana, Ethereum, Base, Arbitrum) and BTC through NEAR Intents 1Click. Swaps to native USDC in the user's NEAR wallet, then offers a one-click deposit. Live quotes in every mode. A real deposit address is only issued on a mainnet deployment using native USDC, because 1Click is mainnet only. Pending swaps survive reloads. |
+| Agent badge | Every quote is verified in the browser (same digest as the contract) against the agent key, and the key against `is_agent_key`. Quotes from any other key are refused. The TEE code hash and quote show once `/attestation` provides them (#34). |
 
 The trade preview and the demo contract apply the contract's rule that a buy is paid in full from cash, and the account panel warns when unsettled funding exceeds what the account can pay (the point at which anyone can close its positions). The demo contract has no keeper, so it never liquidates.
 
@@ -78,14 +78,8 @@ cargo run --example margin_vectors > ../../app/src/lib/fixtures/margin_vectors.j
 
 The quote server is `agent/twooptions_agent/server.py`; `agent/README.md` documents every endpoint. The app uses `/chain`, `/quote`, `/spot`, `/attestation` and `/funding/history` (loaded once, so the Funding page shows past settlements). Run it with `make near-agent` and set `VITE_AGENT_URL=http://localhost:8787`. The agent allows the origins in its `TWOOPTIONS_CORS_ORIGINS`. `VITE_AGENT_PUBLIC_KEY` can pin the key instead of trusting `/attestation`.
 
-## Open items between the app and the agent
+## Limitations
 
-1. **Local pricing still uses the old model.** `src/lib/pricing.ts` (demo mode, payoff charts, and the chain fallback when no agent is configured) prices with half weights at an hourly period, about $12 at the money on ETH 3,500. The agent prices with weights `c(1-c)^(n-1)`, `c = 1/24`, hourly, about $39, because that is what `(mark - intrinsic) / 24` per hour is worth (`agent/README.md`, "Pricing"). In chain mode with an agent every price on screen is the agent's, so the two only disagree in demo mode and in the charts. Porting it is a change to the weights in `everlasting()` plus the demo's strike grid and copy ("lives about 2 hours" becomes about a day).
-2. **Demo parameters.** `demoParams()` mirrors the contract defaults (4% cap, 150 bps band, 10 s TTL). Testnet runs the preset in `contracts/README.md` ("Deploying"). The app reads all of them from `get_params`, so only the demo differs.
-3. **Strike grid.** With an average life of a day, strikes out to about ±5% carry a visible premium. Bootstrap lists the at-the-money strike and two either side in steps of about 2.5% of spot.
-
-## Not done yet
-
-- TEE attestation in the badge waits on the Shade Agent (#5, #34).
-- NEP-245 position transfer. The contract does not mint position tokens yet.
-- Nothing has been run against a deployed contract or a live agent yet. The agent, the keeper and the deploy tooling now exist (`agent/`); testnet needs someone with a funded account to run `make near-bootstrap`.
+- **Local pricing is a simpler model than the agent's.** `src/lib/pricing.ts` (demo mode, payoff charts, and the chain when no agent is configured) prices with half weights at an hourly period. The agent prices with the weights the contract's funding rule implies (`agent/README.md`, "Pricing"). Wherever an agent is configured, the prices shown and traded are the agent's.
+- **Positions are not transferable.** They live in the account record; there are no position tokens.
+- **Deposits from other chains deliver on mainnet only.** On testnet the dialog shows a live NEAR Intents quote and stops there.

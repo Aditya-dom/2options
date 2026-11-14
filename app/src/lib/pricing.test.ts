@@ -7,7 +7,7 @@ test('normCdf is accurate to 1e-7', () => {
   expect(normCdf(-3)).toBeCloseTo(0.0013498980, 7);
 });
 
-test('ATM ETH call matches the handoff numbers (~$12, delta 0.5, ~$0.50/h funding)', () => {
+test('ATM ETH call matches the reference numbers (~$12, delta 0.5, ~$0.50/h funding)', () => {
   const c = everlasting(3_500, 3_500, 0.6, 'Call');
   expect(c.price).toBeGreaterThan(11.5);
   expect(c.price).toBeLessThan(12.5);

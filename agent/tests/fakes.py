@@ -16,6 +16,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from twooptions_agent import margin, wire
 from twooptions_agent.near import TxError, TxResult
+from twooptions_agent.rpc import RpcError
 
 SEC = 1_000_000_000
 HOUR = 3_600 * SEC
@@ -86,6 +87,10 @@ class FakeChain:
     #: This many post_spot calls are accepted by the RPC but change nothing, as when a post sent
     #: without waiting for its outcome is refused on chain.
     drop_spot_posts: int = 0
+    #: The contract's index of account ids, or None for a contract from before it had one.
+    index: list[str] | None = None
+    #: `list_liquidatable` runs out of gas for pages larger than this.
+    max_page: int = 10**9
 
     def add_series(self, *ids: str) -> None:
         for sid in ids:
@@ -121,7 +126,41 @@ class FakeChain:
             return self.accounts.get(a["account_id"])
         if method == "is_agent_key":
             return True
+        if method in ("get_account_count", "list_account_ids", "list_liquidatable"):
+            if self.index is None:
+                raise RpcError(
+                    f"{method}: wasm execution failed with error: "
+                    "MethodResolveError(MethodNotFound)"
+                )
+            if method == "get_account_count":
+                return len(self.index)
+            if a["limit"] > self.max_page:
+                raise RpcError(
+                    f"{method}: wasm execution failed with error: HostError(GasLimitExceeded)"
+                )
+            page = self.index[a["from_index"] : a["from_index"] + a["limit"]]
+            if method == "list_account_ids":
+                return page
+            return [i for i in page if self.liquidatable(i)]
         raise AssertionError(f"unexpected view {method}")
+
+    def liquidatable(self, account_id: str) -> bool:
+        """The contract's test (lib.rs): the funding owed comes off the equity first."""
+        acct = self.accounts.get(account_id)
+        if not acct or not acct["positions"] or acct["equity"] is None:
+            return False
+        owed = sum(
+            margin.mul_div_ceil(
+                int(p["size"]),
+                int(self.series[p["series"]]["funding_index"]) - int(p["entry_index"]),
+                margin.SIZE_SCALE,
+            )
+            for p in acct["positions"]
+            if "entry_index" in p
+        )
+        equity, req = int(acct["equity"]) - owed, int(acct["requirement"])
+        ratio = self.params["liquidation_ratio_bps"]
+        return equity < 0 or (req > 0 and equity * margin.BPS < req * ratio)
 
     # -- transactions -------------------------------------------------------------------------
 
@@ -195,21 +234,16 @@ class FakeChain:
             if self.account_id not in self.accounts:
                 raise TxError("liquidator needs an account to receive the reward")
             acct = self.accounts[a["account_id"]]
-            # As lib.rs: charge the funding owed, then test equity and the ratio.
-            owed = sum(
-                margin.mul_div_ceil(
-                    int(p["size"]),
-                    int(self.series[p["series"]]["funding_index"]) - int(p["entry_index"]),
-                    margin.SIZE_SCALE,
-                )
-                for p in acct["positions"]
-                if "entry_index" in p
-            )
-            equity, req = int(acct["equity"]) - owed, int(acct["requirement"])
-            ratio = self.params["liquidation_ratio_bps"]
-            if not (equity < 0 or (req > 0 and equity * margin.BPS < req * ratio)):
+            if not self.liquidatable(a["account_id"]):
                 raise TxError("account is not liquidatable")
             acct["positions"] = []
+        elif method == "index_accounts":
+            if self.index is None:
+                raise TxError("MethodResolveError(MethodNotFound)")
+            assert len(a["account_ids"]) <= 100
+            for i in a["account_ids"]:
+                if i in self.accounts and i not in self.index:
+                    self.index.append(i)
         else:
             raise AssertionError(f"unexpected call {method}")
         self.calls.append((method, a))

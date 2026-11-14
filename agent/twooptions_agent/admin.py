@@ -1,4 +1,4 @@
-"""Owner-side setup for a testnet deployment (#18): everything HANDOFF_GAURAV.md section 1 asks for.
+"""Owner-side setup for a testnet deployment: deploy, configure, upgrade.
 
     uv run python -m twooptions_agent.admin keygen
     uv run python -m twooptions_agent.admin bootstrap --underlyings ETH     # the whole list below
@@ -35,6 +35,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from . import config, near, rpc
 from .spot import SpotFeed
+from .store import Store
 from .wire import Underlying
 
 log = logging.getLogger("twooptions_admin")
@@ -262,6 +263,31 @@ class Admin:
         self._transfer_call(keeper, usdc, "deposit")
         log.info("keeper %s deposited %s USDC", keeper.account_id, usdc)
 
+    def index_accounts(self, candidates: list[str], batch: int = 50) -> dict[str, int]:
+        """Add accounts that existed before the contract kept its index of account ids. The
+        contract adds only ids whose account exists and is not listed yet, so the candidates
+        may include anything; running this twice changes nothing."""
+        before = int(self.view(self.contract_id, "get_account_count"))
+        ids = sorted(set(candidates))
+        for i in range(0, len(ids), batch):
+            self.owner.call(
+                self.contract_id,
+                "index_accounts",
+                {"account_ids": ids[i : i + batch]},
+                gas=100 * near.TGAS,
+            )
+        after = int(self.view(self.contract_id, "get_account_count"))
+        return {"candidates": len(ids), "listed_before": before, "listed_after": after}
+
+    def accounts_listed(self) -> int | None:
+        """Accounts in the contract's index, or None for a contract from before it had one."""
+        try:
+            return int(self.view(self.contract_id, "get_account_count"))
+        except rpc.RpcError as e:
+            if "MethodNotFound" in str(e) or "MethodResolveError" in str(e):
+                return None
+            raise
+
     def status(self) -> dict[str, Any]:
         c = self.contract_id
         series = self.view(c, "list_series")
@@ -276,11 +302,27 @@ class Admin:
             "spot": {u: self.view(c, "get_spot", {"underlying": u}) for u in underlyings},
             "vault": self.view(c, "get_vault"),
             "solvency": self.view(c, "get_solvency"),
+            "accounts_listed": self.accounts_listed(),
             "contract_registered_with_usdc": self.view(
                 self.usdc_id, "storage_balance_of", {"account_id": c}
             )
             is not None,
         }
+
+
+def index_candidates(accounts: str, accounts_file: Path | None) -> list[str]:
+    """Account ids to offer to the contract's index: this agent's liquidation watch list, plus
+    any given on the command line or in a file (one per line, or a JSON list)."""
+    ids = list(Store(config.data_dir()).takers())
+    ids += [a.strip() for a in accounts.split(",") if a.strip()]
+    if accounts_file is not None:
+        text = accounts_file.read_text()
+        try:
+            listed = json.loads(text)
+        except ValueError:
+            listed = text.split()
+        ids += [str(a).strip() for a in listed if str(a).strip()]
+    return ids
 
 
 def _repo_wasm(name: str) -> Path:
@@ -318,7 +360,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("keygen", help="print a new ed25519 key pair")
     sub.add_parser("status", help="print the contract's state")
     for name in ("bootstrap", "deploy-usdc", "deploy", "set-params", "register", "add-series",
-                 "seed-lp", "fund-keeper", "set-agent-keys", "mint", "upgrade", "upgrade-usdc"):  # fmt: skip
+                 "seed-lp", "fund-keeper", "set-agent-keys", "mint", "upgrade", "upgrade-usdc",
+                 "index-accounts"):  # fmt: skip
         s = sub.add_parser(name)
         s.add_argument("--wasm", type=Path, default=_repo_wasm("twooptions"))
         s.add_argument("--usdc-wasm", type=Path, default=_repo_wasm("test_usdc"))
@@ -340,6 +383,16 @@ def main(argv: list[str] | None = None) -> int:
             help="upgrade, upgrade-usdc: also call migrate() in the same transaction",
         )
         s.add_argument("--amount", type=float, default=10_000.0, help="mint: USDC")
+        s.add_argument(
+            "--accounts",
+            default="",
+            help="index-accounts: account ids to offer, comma separated, besides the watch list",
+        )
+        s.add_argument(
+            "--accounts-file",
+            type=Path,
+            help="index-accounts: a file of account ids to offer, one per line or a JSON list",
+        )
     a = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, stream=sys.stderr, format="%(levelname)s %(message)s")
     if a.cmd == "keygen":
@@ -386,6 +439,9 @@ def main(argv: list[str] | None = None) -> int:
             "fund-keeper": lambda: _fund_keeper(admin, net, a.keeper_usdc),
             "mint": lambda: admin.mint(a.to or owner.account_id, a.amount),
             "upgrade": lambda: admin.upgrade(net.contract_id, a.wasm, migrate=a.migrate),
+            "index-accounts": lambda: print(
+                json.dumps(admin.index_accounts(index_candidates(a.accounts, a.accounts_file)))
+            ),
             "upgrade-usdc": lambda: admin.upgrade(
                 usdc_id, a.usdc_wasm, migrate=a.migrate, migrate_args={"owner_id": owner.account_id}
             ),

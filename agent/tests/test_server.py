@@ -532,3 +532,72 @@ def test_the_log_files_stay_bounded_and_keep_the_newest(
     assert len(lines("funding.jsonl")) == 10
     assert [e["epoch"] for e in again.funding_history(None, 2)] == ["199", "198"]
     assert len(again.funding_history(None, 500)) == 10
+
+
+# -- quotes are limited per account, whatever is in front of the server ------------------------
+
+
+def test_one_account_cannot_take_another_accounts_allowance(app: App, chain: FakeChain) -> None:
+    """Behind a gateway every request has the gateway's address, so the limit that matters is
+    the one on the account."""
+    chain.accounts["bob.testnet"] = dict(chain.accounts["alice.testnet"])
+    app.taker_limiter = RateLimiter(per_second=0.001, burst=2)
+    same_address = "10.0.0.1"
+    ask = lambda taker: app.handle("/quote", {**QUOTE, "taker": taker}, same_address)[0]  # noqa: E731
+    assert [ask("alice.testnet") for _ in range(3)] == [200, 200, 429]
+    assert [ask("bob.testnet") for _ in range(3)] == [200, 200, 429]
+
+
+def test_asking_again_for_an_account_that_does_not_exist_costs_no_more_chain_reads(
+    app: App, chain: FakeChain
+) -> None:
+    reads: list[str] = []
+    view = app.cache.view
+
+    def counting(method: str, args: dict | None = None):  # type: ignore[no-untyped-def]
+        if method == "get_account":
+            reads.append(args["account_id"])  # type: ignore[index]
+        return view(method, args)
+
+    app.cache.view = counting
+    for _ in range(5):
+        status, body = app.handle("/quote", {**QUOTE, "taker": "nobody.testnet"})
+        assert status == 409 and body["error"] == "deposit first"
+    assert reads == ["nobody.testnet"]
+    # Once it deposits, it is found again when the memory of the miss has run out.
+    chain.accounts["nobody.testnet"] = dict(chain.accounts["alice.testnet"])
+    app._no_account.clear()
+    assert app.handle("/quote", {**QUOTE, "taker": "nobody.testnet"})[0] == 200
+    assert "nobody.testnet" in app.store.takers()
+
+
+def test_lookups_of_new_accounts_are_rationed_across_all_clients(app: App) -> None:
+    app.lookup_limiter = RateLimiter(per_second=0.001, burst=3)
+    got = [
+        app.handle("/quote", {**QUOTE, "taker": f"made-up-{i}.testnet"}, f"10.0.0.{i}")[0]
+        for i in range(5)
+    ]
+    assert got == [409, 409, 409, 429, 429]
+    # An account the agent already knows is not held up by the flood.
+    app.store.add_taker("alice.testnet")
+    assert app.handle("/quote", QUOTE, "10.0.0.99")[0] == 200
+
+
+def test_a_malformed_request_is_refused_before_the_account_is_read(app: App) -> None:
+    view = app.cache.view
+
+    def no_account_reads(method: str, args: dict | None = None):  # type: ignore[no-untyped-def]
+        assert method != "get_account", "the account must not be read for a malformed request"
+        return view(method, args)
+
+    app.cache.view = no_account_reads
+    assert app.handle("/quote", {**QUOTE, "taker": "x" * 65})[0] == 400
+    # An over-long name is refused before it is remembered anywhere: the limiter keeps a
+    # record per account, and its keys must not be whatever length a caller likes.
+    assert app.handle("/quote", {**QUOTE, "taker": "y" * 50_000})[0] == 400
+    assert all(len(k) <= 64 for k in app.taker_limiter._state)
+    assert app.handle("/quote", {**QUOTE, "side": "Hold"})[0] == 400
+    assert app.handle("/quote", {**QUOTE, "taker": "new.testnet", "series": "ETH-1-C"})[0] in (
+        400,
+        404,
+    )

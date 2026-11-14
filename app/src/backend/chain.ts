@@ -16,7 +16,7 @@ import { fetchFills, type Fill } from '../lib/history';
 import type { Backend, Call, CallResult, FaucetStatus } from './types';
 
 const TGAS = 1_000_000_000_000n;
-/** ft_transfer_call forwards to ft_on_transfer; the handoff says start at 100 TGas. */
+/** ft_transfer_call forwards to ft_on_transfer. */
 const GAS_DEPOSIT = 100n * TGAS;
 /** withdraw / lp_claim chain an ft_transfer (30 TGas) and a callback (15 TGas). */
 const GAS_PAYOUT = 100n * TGAS;
@@ -28,7 +28,7 @@ const ONE_YOCTO = 1n;
 const MAX_TX_GAS = 300n * TGAS;
 /** Parameters change only when the owner sets them, so one read serves a minute of polls. */
 const PARAMS_TTL_MS = 60_000;
-/** ~75 TGas per leg; trade() gas is not measured yet (#18), so stay conservative. */
+/** ~75 TGas per leg; trade() gas is not measured, so stay conservative. */
 export const MAX_BATCH_LEGS = 4;
 
 /** Zero-deposit methods a limited access key may call, so trades sign without a wallet popup. */

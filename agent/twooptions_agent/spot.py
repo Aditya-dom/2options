@@ -1,4 +1,4 @@
-"""Spot price feed for `post_spot` (#22).
+"""Spot price feed for `post_spot`.
 
 Pyth Hermes now answers 401 without an API key (checked Nov 10 2026), so the feed takes the
 median of public venue prices instead: Coinbase, Kraken, Binance (USDT book) and Hyperliquid

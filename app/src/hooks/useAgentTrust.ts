@@ -1,10 +1,10 @@
 /**
- * What the app can say about the agent that signs its quotes (#35):
+ * What the app can say about the agent that signs its quotes:
  *
  * 1. Which key it signs with (VITE_AGENT_PUBLIC_KEY, else the agent's /attestation).
  * 2. Whether the contract accepts that key (`is_agent_key`).
  * 3. Whether each quote received is actually signed by it (checked in the browser).
- * 4. The TEE attestation (code hash, quote) once the agent runs as a Shade Agent (#34).
+ * 4. The TEE attestation (code hash, quote) when the agent runs in a TEE.
  */
 
 import { create } from 'zustand';

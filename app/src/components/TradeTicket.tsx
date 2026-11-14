@@ -101,7 +101,7 @@ export default function TradeTicket({ pick, onPick, size, onSize, onFunds }: {
   const contracts = sizeOk ? Number(sizeUnits) / Number(SIZE_SCALE) : 0;
   const tier = preview?.ratioAfterBps != null && params ? healthTier(preview.ratioAfterBps, params) : null;
   const blocked = !agent.canTrade
-    ? 'No agent is configured, so quotes cannot be signed. Set VITE_AGENT_URL once Gaurav\'s agent is up.'
+    ? 'No agent is configured, so quotes cannot be signed. Set VITE_AGENT_URL to a running agent.'
     : paused ? 'Trading is paused by the operator.'
     : side === 'Sell' && price === 0n ? 'There is no bid for this strike: selling it would earn no premium.'
     : null;

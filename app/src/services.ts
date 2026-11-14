@@ -4,7 +4,7 @@
  * | VITE_CONTRACT_ID | VITE_AGENT_URL | backend          | agent                               |
  * |------------------|----------------|------------------|-------------------------------------|
  * | unset            | (ignored)      | in-browser demo  | local pricing, trades accepted      |
- * | set              | set            | chain            | Gaurav's quote server               |
+ * | set              | set            | chain            | the agent's quote server            |
  * | set              | unset          | chain            | local pricing, trading disabled     |
  */
 

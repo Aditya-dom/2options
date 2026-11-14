@@ -187,11 +187,15 @@ test('keeper: running, failing jobs, a held price, no keeper, and no answer', ()
   expect([held.level, held.summary]).toEqual(['warn', 'Holding back the ETH price instead of posting it: venues disagree by 80 bps']);
   expect(check(good({ health: { keeper: null, hedger: false } }), 'keeper').level).toBe('warn');
   // The liquidation scan: reported when the agent sends it, and a warning once it falls behind.
-  const watching = (behindS: number) => check(good({ health: health({ watch: { accounts: 240, withPositions: 180, behindS } }) }), 'keeper');
-  expect(watching(3).summary).toBe('Running: last price sent 4 s ago; 0 liquidations since it started; watching 240 accounts.');
+  const watching = (behindS: number) => check(good({ health: health({ watch: { accounts: 240, withPositions: 180, behindS, fromContract: false } }) }), 'keeper');
+  expect(watching(3).summary).toBe('Running: last price sent 4 s ago; 0 liquidations since it started; watching the 240 accounts it has quoted for.');
   expect(watching(60).level).toBe('ok');
   expect(watching(95)).toMatchObject({ level: 'warn', summary: expect.stringContaining('95 s behind: 180 accounts hold positions') });
-  expect(check(good({ health: health({ watch: { accounts: 1, withPositions: 0, behindS: 0 } }) }), 'keeper').summary).toContain('watching 1 account.');
+  // A contract that lists its accounts is asked directly, so every account is covered.
+  const indexed = (accounts: number, behindS: number) => check(good({ health: health({ watch: { accounts, withPositions: null, behindS, fromContract: true } }) }), 'keeper');
+  expect(indexed(1, 0).summary).toContain('watching all 1 account on the contract.');
+  expect(indexed(5_000, 0).summary).toContain('watching all 5000 accounts on the contract.');
+  expect(indexed(5_000, 70)).toMatchObject({ level: 'warn', summary: expect.stringContaining('70 s behind: a round over 5000 accounts is taking too long') });
   expect(check(good({ health: null }), 'keeper').level).toBe('unknown');
   // A keeper that is down is not itself an outage: the price-feed check is what says trading stopped.
   expect(buildStatus(good({ health: health({ errors: { spot: 'boom' } }) }), NOW).overall).toBe('degraded');
