@@ -1,7 +1,7 @@
 # 2Options agent on an Oracle Always Free VM: quotes, keeper and hedger, behind Caddy (HTTPS).
 services:
   agent:
-    image: ghcr.io/gks2022004/2options@sha256:bd795bb0e67ff5e9d7128239dedf7843096d1503004717fff56a3df7d969a224
+    image: ghcr.io/gks2022004/2options@sha256:e76f0a5f9c6c74071fa2dc725f8c5830aebc6e46dae527445fb1eaf4ed1bc928
     restart: always
     env_file: agent.env
     environment:
