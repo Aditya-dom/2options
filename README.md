@@ -6,9 +6,7 @@
 
 2Options is an everlasting-options exchange. A call or put has no expiry date: instead of buying a dated contract and rolling it, the holder pays a small funding amount every hour for as long as they keep it. A NEAR smart contract holds every dollar, enforces margin and settles funding. An off-chain agent prices the options and signs quotes, and the contract checks each quote against its own limits before anything moves.
 
-- **Live app:** https://2options.xyz (NEAR testnet)
-- **Agent API:** https://api.2options.xyz ([`/status` page in the app](https://2options.xyz/#/status) shows every component's health)
-- **Hackathon:** NEAR Hackathon, 1–14 November 2026. Tracks: **Unstoppable DeFi** (`defi`) and **AI Security & Defense** (`security`).
+**Live on NEAR testnet at [2options.xyz](https://2options.xyz).** Built at NEAR Hackathon, 1–14 November 2026, for the Unstoppable DeFi and AI Security & Defense tracks.
 
 | Testnet | Account |
 |---|---|
@@ -22,6 +20,8 @@
 3. **Deposit** it as collateral, click an **Ask** in the option chain to buy (or a **Bid** to sell), get a firm quote and confirm.
 
 After the first deposit, trades need no wallet pop-up: the app adds a limited key that can only call the contract's trading methods. On this shared deployment each trade is capped at 0.1 contracts so the hedge stays small (see [Deployment](#deployment)).
+
+The [status page](https://2options.xyz/#/status) shows the live health of every component.
 
 ## How it works
 
@@ -94,11 +94,12 @@ Controls, all in `contracts/twooptions/src/lib.rs`:
 
 ## Deployment
 
-| Piece | Where | Cost |
-|---|---|---|
-| App | Vercel, at `2options.xyz` (`app/vercel.json`) | free (Hobby) |
-| Agent: quotes, keeper, hedger | One Oracle Cloud Always Free VM behind Caddy, at `api.2options.xyz` (`deploy/oracle/`) | free |
-| Hedge venue | Hyperliquid testnet | test funds |
+| Piece | Where |
+|---|---|
+| Contracts | NEAR testnet |
+| App | Vercel (`app/vercel.json`) |
+| Agent: quotes, keeper, hedger | One Oracle Cloud VM behind Caddy (`deploy/oracle/`) |
+| Hedge venue | Hyperliquid testnet |
 
 The shared deployment caps sizes in the agent so the hedge uses little test money: at most 0.1 contracts per trade, 0.1 per account per series, and 0.25 open across all accounts per underlying; the hedge is capped at $500. Closing a position is always allowed. The limits are agent settings (`TWOOPTIONS_MAX_*`, `HEDGE_MAX_*`), published at `/limits`, and the app shows them on the ticket.
 
@@ -160,7 +161,4 @@ uv run python scripts/hedge_smoke.py --trade                  # a minimum-size r
 | `agent/README.md` | Agent setup, HTTP API, pricing model, keeper and hedger |
 | `app/README.md` | App modes, screens and layout |
 | `deploy/oracle/README.md` | The live deployment and how to rebuild it |
-
-## License
-
-MIT
+| `deploy/phala/README.md` | The TEE container image (built, not deployed) |
