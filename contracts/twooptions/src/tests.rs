@@ -1061,9 +1061,11 @@ impl Snapshot {
         for (id, a) in self.accounts {
             match a {
                 Some(a) => {
+                    c.account_ids.insert(id.clone());
                     c.accounts.insert(id, a);
                 }
                 None => {
+                    c.account_ids.remove(&id);
                     c.accounts.remove(&id);
                 }
             }
@@ -1174,6 +1176,10 @@ fn ledger_invariant_holds_over_a_random_operation_mix() {
             }
         }
         assert!(h.c.vault_cash >= 0 || kind == 6, "vault cash went negative at step {step}");
+        assert_index_matches_accounts(&h.c, step);
+        if step % 25 == 0 {
+            assert_view_agrees_with_liquidate(&mut h, step);
+        }
     }
     // The run must exercise both accepted and rejected paths, not just one.
     assert!(completed > 200, "completed {completed}");
@@ -1342,4 +1348,281 @@ fn migration_keeps_every_balance_and_adds_the_new_limits() {
     // Trading works after the upgrade.
     assert_eq!(trade_err(&mut h, "alice.near", "ETH-3500-C", Side::Sell, 1.0, 12.0), "");
     h.assert_solvent();
+}
+
+// ---------------------------------------------------------------------------------------------
+// The index of account ids, and the views a keeper pages through
+// ---------------------------------------------------------------------------------------------
+
+/// The index lists exactly the accounts that exist, each once.
+fn assert_index_matches_accounts(c: &TwoOptions, step: usize) {
+    let listed: Vec<AccountId> = c.list_account_ids(0, 1_000);
+    assert_eq!(listed.len() as u32, c.get_account_count(), "count and listing differ at step {step}");
+    for name in ["lp.near", "nobody.near"].iter().chain(TOUCHED.iter()) {
+        let id = acct(name);
+        assert_eq!(
+            listed.iter().filter(|x| **x == id).count(),
+            usize::from(c.accounts.contains_key(&id)),
+            "{name} is listed wrongly at step {step}"
+        );
+    }
+}
+
+/// `list_liquidatable` names an account exactly when `liquidate` would accept it.
+fn assert_view_agrees_with_liquidate(h: &mut Harness, step: usize) {
+    let listed = h.c.list_liquidatable(0, 1_000);
+    for name in ["alice.near", "bob.near", "carol.near"] {
+        let before = Snapshot::take(&h.c);
+        let accepted = liquidate_err(h, name).is_empty();
+        before.restore(&mut h.c); // only asking: put back whatever the liquidation did
+        assert_eq!(listed.contains(&acct(name)), accepted, "view and liquidate disagree on {name} at step {step}");
+    }
+}
+
+fn listed(h: &Harness) -> Vec<String> {
+    let mut ids: Vec<String> = h.c.list_account_ids(0, 100).iter().map(|a| a.to_string()).collect();
+    ids.sort();
+    ids
+}
+
+#[test]
+fn an_account_is_listed_from_its_first_deposit_until_it_is_empty() {
+    let mut h = Harness::new();
+    assert_eq!(h.c.get_account_count(), 0);
+    h.lp("lp.near", 100_000); // an LP has shares, not a trading account
+    assert_eq!(h.c.get_account_count(), 0);
+    h.deposit("alice.near", 1_000);
+    h.deposit("bob.near", 1_000);
+    h.deposit("alice.near", 500); // a second deposit does not list it twice
+    assert_eq!(listed(&h), ["alice.near", "bob.near"]);
+
+    // Withdrawing everything removes the account, and its place in the index with it.
+    h.as_user("alice.near");
+    let _ = h.c.withdraw(U128(1_500 * USDC));
+    assert_eq!(listed(&h), ["bob.near"]);
+    assert!(h.c.get_account(acct("alice.near")).is_none());
+
+    // A withdrawal whose transfer fails is refunded, and the account is listed again.
+    testing_env!(
+        ctx("contract.near", h.now),
+        near_sdk::test_vm_config(),
+        near_sdk::RuntimeFeesConfig::test(),
+        Default::default(),
+        vec![near_sdk::PromiseResult::Failed],
+    );
+    h.c.on_withdraw(acct("alice.near"), U128(1_500 * USDC));
+    assert_eq!(listed(&h), ["alice.near", "bob.near"]);
+    assert_eq!(h.collateral("alice.near"), 1_500 * USDC as i128);
+    h.assert_solvent();
+}
+
+#[test]
+fn a_liquidated_account_that_is_left_empty_leaves_the_index() {
+    let mut h = long_with_no_spare_cash(); // carol: one long call, no cash
+    assert!(listed(&h).contains(&"carol.near".to_string()));
+    // The option goes out of the money and to the minimum mark; funding takes the rest.
+    for _ in 0..40 {
+        settle_an_hour(&mut h, 3_500, 12.0);
+        if liquidate_err(&mut h, "carol.near").is_empty() {
+            break;
+        }
+    }
+    let left = h.c.get_account(acct("carol.near"));
+    assert_eq!(listed(&h).contains(&"carol.near".to_string()), left.is_some());
+    assert_index_matches_accounts(&h.c, 0);
+    h.assert_solvent();
+}
+
+#[test]
+fn the_index_is_read_a_page_at_a_time() {
+    let mut h = Harness::new();
+    let names: Vec<String> = (0..7).map(|i| format!("user{i}.near")).collect();
+    for n in &names {
+        h.deposit(n, 10);
+    }
+    let mut seen: Vec<String> = Vec::new();
+    for from in (0..9).step_by(3) {
+        let page = h.c.list_account_ids(from, 3);
+        assert!(page.len() <= 3);
+        seen.extend(page.iter().map(|a| a.to_string()));
+    }
+    seen.sort();
+    assert_eq!(seen, names);
+    assert!(h.c.list_account_ids(7, 3).is_empty());
+    assert!(h.c.list_account_ids(1_000_000, 3).is_empty());
+    assert!(h.c.list_account_ids(0, 0).is_empty());
+    assert!(h.c.list_liquidatable(4_000_000_000, u32::MAX).is_empty());
+}
+
+#[test]
+fn list_liquidatable_names_a_short_exactly_when_liquidate_accepts_it() {
+    let mut h = short_then_squeeze(); // bob: short one ATM call, healthy
+    assert!(h.c.list_liquidatable(0, 100).is_empty());
+    assert_eq!(liquidate_err(&mut h, "bob.near"), "account is not liquidatable");
+    // Walk the price up a step at a time; the view and the call must flip on the same step.
+    let mut flipped_at = None;
+    for (i, p) in (3_550..4_400).step_by(25).enumerate() {
+        h.advance(20);
+        h.spot(p);
+        let listed = h.c.list_liquidatable(0, 100).contains(&acct("bob.near"));
+        let before = Snapshot::take(&h.c);
+        let accepted = liquidate_err(&mut h, "bob.near").is_empty();
+        before.restore(&mut h.c);
+        assert_eq!(listed, accepted, "view and liquidate disagree at spot {p}");
+        if listed && flipped_at.is_none() {
+            flipped_at = Some(i);
+        }
+    }
+    assert!(flipped_at.is_some_and(|i| i > 0), "the walk must cross the liquidation point");
+    // Only bob: alice and the keeper have no positions.
+    assert_eq!(h.c.list_liquidatable(0, 100), vec![acct("bob.near")]);
+    // The page that does not hold bob does not name him.
+    let at = h.c.list_account_ids(0, 100).iter().position(|a| *a == acct("bob.near")).unwrap() as u32;
+    assert!(h.c.list_liquidatable(at + 1, 100).is_empty());
+    assert_eq!(h.c.list_liquidatable(at, 1), vec![acct("bob.near")]);
+}
+
+#[test]
+fn list_liquidatable_counts_funding_a_long_owes_to_the_micro() {
+    let mut h = ready();
+    h.deposit("carol.near", 13); // 1 USDC to spare after the premium
+    h.trade("carol.near", "ETH-3500-C", Side::Buy, 1.0, 12.0);
+    let named = |h: &Harness| h.c.list_liquidatable(0, 100).contains(&acct("carol.near"));
+    assert!(!named(&h));
+    settle_an_hour(&mut h, 3_500, 12.0);
+    settle_an_hour(&mut h, 3_500, 12.0);
+    assert!(!named(&h)); // 0.96 owed, 1.00 on hand: the view shows funding not yet charged
+    assert_eq!(h.collateral("carol.near"), USDC as i128);
+    settle_an_hour(&mut h, 3_500, 12.0);
+    assert!(named(&h)); // 1.44 owed
+    assert_eq!(liquidate_err(&mut h, "carol.near"), "");
+    assert!(!named(&h));
+    h.assert_solvent();
+}
+
+#[test]
+fn an_account_that_cannot_be_valued_is_not_named() {
+    let mut h = short_then_squeeze();
+    for p in [3_800, 4_100, 4_400, 4_700, 5_000] {
+        h.advance(20);
+        h.spot(p);
+    }
+    assert_eq!(h.c.list_liquidatable(0, 100), vec![acct("bob.near")]);
+    h.advance(3_600); // the spot is stale now
+    h.as_user("keeper.near");
+    assert!(h.c.list_liquidatable(0, 100).is_empty());
+    assert_eq!(liquidate_err(&mut h, "bob.near"), "spot price is stale");
+}
+
+#[test]
+fn index_accounts_adds_only_accounts_that_exist_and_only_once() {
+    let mut h = ready(); // alice and the keeper have accounts
+    h.c.account_ids.clear(); // as after the upgrade: accounts exist, the index is empty
+    assert_eq!(h.c.get_account_count(), 0);
+    h.as_user("anyone.near");
+    let ids = vec![acct("alice.near"), acct("ghost.near"), acct("alice.near"), acct("lp.near")];
+    assert_eq!(h.c.index_accounts(ids.clone()), 1);
+    assert_eq!(listed(&h), ["alice.near"]);
+    assert_eq!(h.c.index_accounts(ids), 0);
+    assert_eq!(h.c.index_accounts(vec![acct("keeper.near")]), 1);
+    assert_index_matches_accounts(&h.c, 0);
+}
+
+#[test]
+#[should_panic(expected = "too many accounts in one call")]
+fn index_accounts_takes_a_bounded_batch() {
+    let mut h = ready();
+    h.c.index_accounts((0..101).map(|i| acct(&format!("u{i}.near"))).collect());
+}
+
+/// Write the state the way the contract stored it before the account index, and run `migrate`.
+fn migrate_from_v2(h: &mut Harness) {
+    let mut c = std::mem::replace(&mut h.c, TwoOptions::new(acct("x.near"), acct("y.near"), vec![]));
+    c.account_ids.clear(); // the old contract had no index: leave nothing under its prefix
+    c.account_ids.flush();
+    c.accounts.flush();
+    c.series.flush();
+    c.spot.flush();
+    c.lp_shares.flush();
+    c.lp_claims.flush();
+    c.mark_refs.flush();
+    let old = migrate::StateV2 {
+        owner_id: c.owner_id.clone(),
+        pending_owner: c.pending_owner.clone(),
+        usdc: c.usdc.clone(),
+        paused: c.paused,
+        params: c.params.clone(),
+        agent_keys: c.agent_keys.clone(),
+        accounts: c.accounts,
+        series: c.series,
+        spot: c.spot,
+        lp_shares: c.lp_shares,
+        lp_claims: c.lp_claims,
+        total_shares: c.total_shares,
+        locked_shares: c.locked_shares,
+        vault_cash: c.vault_cash,
+        insurance: c.insurance,
+        lp_pending_total: c.lp_pending_total,
+        sum_collateral: c.sum_collateral,
+        net_inflow: c.net_inflow,
+        mark_refs: c.mark_refs,
+        out_epoch: c.out_epoch,
+        epoch_net_out: c.epoch_net_out,
+        epoch_start_cash: c.epoch_start_cash,
+    };
+    env::state_write(&old);
+    h.c = TwoOptions::migrate();
+}
+
+#[test]
+fn the_index_migration_keeps_every_balance_and_starts_with_an_empty_index() {
+    let mut h = short_then_squeeze(); // alice, bob (short a call), keeper; an LP
+    h.trade("alice.near", "ETH-3500-C", Side::Buy, 2.0, 12.0);
+    settle_an_hour(&mut h, 3_500, 12.0);
+    let before = (
+        h.collateral("alice.near"), h.collateral("bob.near"), h.c.vault_cash, h.c.insurance,
+        h.c.get_solvency().ledger_total.0, h.c.get_solvency().net_inflow.0, h.c.out_epoch, h.c.epoch_net_out,
+    );
+    let params_before = near_sdk::serde_json::to_string(&h.c.get_params()).unwrap();
+    let series_before = near_sdk::serde_json::to_string(&h.c.list_series()).unwrap();
+    let bob_before = near_sdk::serde_json::to_string(&h.c.get_account(acct("bob.near"))).unwrap();
+
+    migrate_from_v2(&mut h);
+
+    let after = (
+        h.collateral("alice.near"), h.collateral("bob.near"), h.c.vault_cash, h.c.insurance,
+        h.c.get_solvency().ledger_total.0, h.c.get_solvency().net_inflow.0, h.c.out_epoch, h.c.epoch_net_out,
+    );
+    assert_eq!(before, after);
+    assert_eq!(near_sdk::serde_json::to_string(&h.c.get_params()).unwrap(), params_before);
+    assert_eq!(near_sdk::serde_json::to_string(&h.c.list_series()).unwrap(), series_before);
+    assert_eq!(near_sdk::serde_json::to_string(&h.c.get_account(acct("bob.near"))).unwrap(), bob_before);
+
+    // The accounts are all there; the index knows none of them yet.
+    assert_eq!(h.c.get_account_count(), 0);
+    assert!(h.c.list_liquidatable(0, 100).is_empty());
+    // An account lists itself by acting; the rest are added from outside.
+    assert_eq!(trade_err(&mut h, "alice.near", "ETH-3500-C", Side::Sell, 1.0, 12.0), "");
+    assert_eq!(listed(&h), ["alice.near"]);
+    h.as_user("anyone.near");
+    assert_eq!(h.c.index_accounts(vec![acct("alice.near"), acct("bob.near"), acct("keeper.near")]), 2);
+    assert_index_matches_accounts(&h.c, 0);
+
+    // And liquidation works through the index after the upgrade.
+    for p in [3_800, 4_100, 4_400, 4_700, 5_000] {
+        h.advance(20);
+        h.spot(p);
+    }
+    assert_eq!(h.c.list_liquidatable(0, 100), vec![acct("bob.near")]);
+    assert_eq!(liquidate_err(&mut h, "bob.near"), "");
+    h.assert_solvent();
+}
+
+#[test]
+#[should_panic(expected = "not a layout this code migrates from")]
+fn migrate_cannot_run_on_state_that_is_already_current() {
+    let mut h = ready();
+    migrate_from_v2(&mut h);
+    env::state_write(&h.c);
+    let _ = TwoOptions::migrate();
 }

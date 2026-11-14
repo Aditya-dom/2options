@@ -22,7 +22,7 @@ use margin::*;
 use math::*;
 use near_sdk::borsh::BorshSerialize;
 use near_sdk::json_types::{Base64VecU8, I128, U128, U64};
-use near_sdk::store::{IterableMap, LookupMap};
+use near_sdk::store::{IterableMap, IterableSet, LookupMap};
 use near_sdk::{
     env, near, require, serde_json, AccountId, BorshStorageKey, CurveType, Gas, NearToken,
     PanicOnDefault, Promise, PromiseOrValue, PublicKey,
@@ -35,6 +35,8 @@ const FUNDING_DOMAIN: &[u8] = b"twooptions:funding:v1";
 
 const MAX_AGENT_KEYS: usize = 4;
 const MAX_SERIES: u32 = 32;
+/// Most account ids one `index_accounts` call may carry.
+const MAX_INDEX_BATCH: usize = 100;
 /// Largest accepted option price, USDC micros per contract ($1M).
 const MAX_PRICE_MICROS: i128 = 1_000_000_000_000;
 /// Largest accepted spot, 1e8-scaled USD ($10M).
@@ -56,6 +58,7 @@ enum StorageKey {
     LpShares,
     LpClaims,
     MarkRefs,
+    AccountIds,
 }
 
 #[near(contract_state)]
@@ -97,6 +100,12 @@ pub struct TwoOptions {
     epoch_net_out: i128,
     /// Vault cash when `out_epoch` began.
     epoch_start_cash: i128,
+
+    /// The id of every account in `accounts`, which is a map that cannot be listed. With this a
+    /// keeper can ask which accounts are liquidatable a page at a time, instead of reading every
+    /// account it happens to know about. Kept in step by `save_account`. Accounts that existed
+    /// before this field are added by `index_accounts`, or by their own next action.
+    account_ids: IterableSet<AccountId>,
 }
 
 #[near]
@@ -126,18 +135,20 @@ impl TwoOptions {
             out_epoch: 0,
             epoch_net_out: 0,
             epoch_start_cash: 0,
+            account_ids: IterableSet::new(StorageKey::AccountIds),
         };
         this.agent_keys = Self::parse_keys(agent_keys);
         this
     }
 
-    /// Upgrade a contract deployed before `mark_refs` and the outflow cap existed. Called by the
-    /// contract account itself in the same transaction as the code deploy. Reading the old
-    /// layout fails on already-migrated state, so it cannot run twice.
+    /// Upgrade the state of a contract deployed before the account index existed (and, for the
+    /// oldest deployments, before `mark_refs` and the outflow cap). Called by the contract
+    /// account itself in the same transaction as the code deploy. Reading an old layout fails
+    /// on state that is already current, so it cannot run twice.
     #[private]
     #[init(ignore_state)]
     pub fn migrate() -> Self {
-        migrate::from_v1()
+        migrate::run()
     }
 
     // -----------------------------------------------------------------------------------------
@@ -162,7 +173,7 @@ impl TwoOptions {
             "deposit" => {
                 let mut acct = self.accounts.get(&sender_id).cloned().unwrap_or_default();
                 self.change_collateral(&mut acct, amt);
-                self.accounts.insert(sender_id.clone(), acct);
+                self.save_account(&sender_id, acct);
                 self.net_inflow = add(self.net_inflow, amt);
                 emit("Deposit", serde_json::json!({"account": sender_id, "amount": amount}));
             }
@@ -238,7 +249,7 @@ impl TwoOptions {
         let mut acct = self.accounts.get(&account_id).cloned().unwrap_or_default();
         self.change_collateral(&mut acct, amt);
         self.net_inflow = add(self.net_inflow, amt);
-        self.accounts.insert(account_id.clone(), acct);
+        self.save_account(&account_id, acct);
         emit("WithdrawRefunded", serde_json::json!({"account": account_id, "amount": amount}));
     }
 
@@ -551,10 +562,7 @@ impl TwoOptions {
 
         self.apply_funding(&mut victim);
         let (equity, req) = self.account_risk(&victim).expect("spot price is stale");
-        require!(
-            equity < 0 || (req > 0 && mul(equity, BPS) < mul(req, self.params.liquidation_ratio_bps as i128)),
-            "account is not liquidatable"
-        );
+        require!(self.below_margin(equity, req), "account is not liquidatable");
 
         // Close everything at the liability mark (a fair mid between asset and liability value).
         // Fees are charged on what each leg could cost the vault: the spot notional of a short,
@@ -677,9 +685,48 @@ impl TwoOptions {
         self.pending_owner = None;
     }
 
+    /// Add accounts that existed before the contract kept its index of account ids. Anyone may
+    /// call this: an id is added only if that account exists and is not listed yet, so a caller
+    /// can at worst pay gas for nothing. Returns how many were added.
+    pub fn index_accounts(&mut self, account_ids: Vec<AccountId>) -> u32 {
+        require!(account_ids.len() <= MAX_INDEX_BATCH, "too many accounts in one call");
+        let mut added = 0;
+        for id in account_ids {
+            if self.accounts.contains_key(&id) && self.account_ids.insert(id) {
+                added += 1;
+            }
+        }
+        added
+    }
+
     // -----------------------------------------------------------------------------------------
     // Views
     // -----------------------------------------------------------------------------------------
+
+    /// How many accounts the index lists.
+    pub fn get_account_count(&self) -> u32 {
+        self.account_ids.len()
+    }
+
+    /// Account ids `from_index..from_index + limit` of the index. The order is not stable: when
+    /// an account is removed, the last one takes its place.
+    pub fn list_account_ids(&self, from_index: u32, limit: u32) -> Vec<AccountId> {
+        self.account_ids.iter().skip(from_index as usize).take(limit as usize).cloned().collect()
+    }
+
+    /// Of the accounts `from_index..from_index + limit` of the index, those `liquidate` would
+    /// accept right now. It is the same test, on the same numbers, so a keeper needs no copy of
+    /// the margin rules: it pages through this and liquidates what comes back. An account that
+    /// cannot be valued because a spot is stale is not returned; `liquidate` refuses it too.
+    pub fn list_liquidatable(&self, from_index: u32, limit: u32) -> Vec<AccountId> {
+        self.account_ids
+            .iter()
+            .skip(from_index as usize)
+            .take(limit as usize)
+            .filter(|id| self.accounts.get(*id).is_some_and(|a| self.liquidatable(a)))
+            .cloned()
+            .collect()
+    }
 
     pub fn get_account(&self, account_id: AccountId) -> Option<AccountView> {
         let acct = self.accounts.get(&account_id)?;
@@ -859,11 +906,15 @@ impl TwoOptions {
         self.sum_collateral = add(self.sum_collateral, delta);
     }
 
+    /// Every write of an account goes through here, which is what keeps the index of account
+    /// ids in step with the accounts that exist.
     fn save_account(&mut self, id: &AccountId, acct: Account) {
         if acct.is_empty() {
             self.accounts.remove(id);
+            self.account_ids.remove(id);
         } else {
             self.accounts.insert(id.clone(), acct);
+            self.account_ids.insert(id.clone());
         }
     }
 
@@ -884,16 +935,52 @@ impl TwoOptions {
         self.try_spot(u).unwrap_or_else(|| env::panic_str("spot price is stale"))
     }
 
+    /// Funding one position has accrued since its entry index. Positive means the trader pays.
+    fn position_funding(pos: &PositionEntry, funding_index: i128) -> i128 {
+        let diff = sub(funding_index, pos.entry_index);
+        if diff == 0 {
+            0
+        } else {
+            mul_div_ceil(pos.size, diff, SIZE_SCALE)
+        }
+    }
+
+    /// Funding the account owes that `apply_funding` has not charged yet.
+    fn funding_owed(&self, acct: &Account) -> i128 {
+        acct.positions.iter().fold(0, |owed, pos| {
+            let s = self.series.get(&pos.series).expect("series missing");
+            add(owed, Self::position_funding(pos, s.funding_index))
+        })
+    }
+
+    /// The liquidation test: equity (after funding) below zero, or under the liquidation ratio
+    /// of the requirement. The first case is what reaches a long, whose requirement is zero.
+    fn below_margin(&self, equity: i128, req: i128) -> bool {
+        equity < 0 || (req > 0 && mul(equity, BPS) < mul(req, self.params.liquidation_ratio_bps as i128))
+    }
+
+    /// Whether `liquidate` would accept this account now. `liquidate` charges the funding owed
+    /// and then applies `below_margin`; this takes the same funding off the equity instead.
+    fn liquidatable(&self, acct: &Account) -> bool {
+        if acct.positions.is_empty() {
+            return false;
+        }
+        match self.account_risk(acct) {
+            Some((equity, req)) => self.below_margin(sub(equity, self.funding_owed(acct)), req),
+            None => false,
+        }
+    }
+
     /// Settle funding accrued since each position's entry index. Positive means the trader pays.
     fn apply_funding(&mut self, acct: &mut Account) {
         let mut payment: i128 = 0;
         for pos in acct.positions.iter_mut() {
             let s = self.series.get(&pos.series).expect("series missing");
-            let diff = sub(s.funding_index, pos.entry_index);
-            if diff != 0 {
-                payment = add(payment, mul_div_ceil(pos.size, diff, SIZE_SCALE));
-                pos.entry_index = s.funding_index;
+            let owed = Self::position_funding(pos, s.funding_index);
+            if owed != 0 {
+                payment = add(payment, owed);
             }
+            pos.entry_index = s.funding_index;
         }
         if payment != 0 {
             self.change_collateral(acct, -payment);

@@ -1,7 +1,7 @@
 //! Margin and valuation. Pure functions so they can be tested without a contract context.
 //!
 //! v1 uses integer-only shocks on intrinsic value plus a time-value reserve, no Black-Scholes
-//! on chain. See NEAR_CONTRACT_SPEC.md §7 for the reasoning and the open calibration question.
+//! on chain. The shocks are not calibrated yet (contracts/README.md, "Known limitations").
 
 use crate::math::*;
 use crate::types::{Kind, Params, Underlying};

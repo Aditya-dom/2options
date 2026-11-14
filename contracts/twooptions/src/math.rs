@@ -1,5 +1,5 @@
 //! Fixed-point helpers. Every operation is checked and panics on overflow; nothing
-//! here uses floats. Rounding always favours the vault (see NEAR_CONTRACT_SPEC.md §1).
+//! here uses floats. Rounding always favours the vault.
 
 use near_sdk::require;
 
