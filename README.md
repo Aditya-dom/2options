@@ -46,7 +46,7 @@ flowchart LR
 |---|---|---|
 | Contract | `contracts/twooptions` (Rust, near-sdk) | Holds USDC. Trader collateral, an LP vault with shares, trades against signed quotes, margin for traders and for the vault, hourly funding, liquidation, pause |
 | Agent | `agent/` (Python: standard library plus `cryptography`) | Prices the chain, signs quotes, posts spot, settles funding, liquidates, hedges the vault's delta on Hyperliquid, serves the HTTP API |
-| App | `app/` (React, Vite) | Wallet login, faucet, deposit and withdraw, option chain, trade ticket, multi-leg strategies, positions and history, funding, LP vault, status page, deposit from other chains via NEAR Intents |
+| App | `app/` (React, Vite) | Wallet login, faucet, deposit and withdraw, option chain, trade ticket, multi-leg strategies, positions and history, funding, LP vault, status page, deposit quotes from other chains via NEAR Intents (delivery on mainnet) |
 | Test USDC | `contracts/test-usdc` | 6-decimal testnet token with a rate-limited faucet |
 
 **A trade.** The agent prices the quote from the contract's own cached spot and signs `Quote { series, taker, side, size, price, nonce, expiry }`. The contract then checks, in order: the caller is the taker, the quote has not expired, the signature is from a registered key, size and price are in range, the price is inside a band around intrinsic value and near the last funding mark, the nonce is unused, and margin holds for both the trader and the vault after the trade. Any failure reverts the whole transaction.
@@ -55,7 +55,7 @@ flowchart LR
 
 **Liquidation.** Anyone may close an account whose equity is below 1.15× its margin requirement, or negative once owed funding is counted. The contract indexes its accounts and answers, a page at a time, which ones `liquidate` would accept (`list_liquidatable`), so the keeper covers every account with the contract's own test.
 
-**Hedging.** The vault is the counterparty to every trade. The agent offsets the vault's net delta with an ETH perp on Hyperliquid, re-hedging only when the gap is worth more than the trading cost. The hedge lives in an exchange account the operator holds, outside the contract (see [Known limitations](#known-limitations)).
+**Hedging.** The vault is the counterparty to every trade. The agent offsets the vault's net delta with an ETH perp on Hyperliquid, re-hedging only when the gap is worth more than the trading cost. The hedge lives in an exchange account the operator holds, outside the contract.
 
 ## Security
 
@@ -79,18 +79,6 @@ Controls, all in `contracts/twooptions/src/lib.rs`:
 - **Arithmetic.** Checked integer fixed-point, rounding in the vault's favour. No floats on chain.
 - **Solvency invariant.** Trader cash + vault cash + insurance + pending LP claims = net USDC received, checked after every step of a 2,000-step random test.
 - **Circuit breaker.** If vault cash plus insurance goes negative, withdrawals halt until it is recapitalised.
-
-### Known limitations
-
-1. **A stolen agent key can cost the vault up to 10% of its cash per hour.** Round trips at the edges of the allowed price range are the attack; the mark band and the hourly payout cap bound it, and the owner can pause and rotate the key (`contracts/README.md`, "Limits on the agent key").
-2. **Spot is agent-signed.** There is no independent oracle on chain. The feed takes the median of four venues and refuses to post when they disagree, but that runs off chain.
-3. **The hedge is off chain and trusted.** It sits in an operator-held exchange account; its profit and loss does not flow into the vault, and nothing on chain proves it exists.
-4. **A quote is a short free option.** A taker can hold a signed quote for its lifetime (under 30 s) and use it only if spot moved their way. The spread is the only compensation.
-5. **Marks go stale between funding settlements.** Equity is valued conservatively, but the LP share price can lag fast moves in time value.
-6. **Longs have no funding buffer.** A long becomes liquidatable only at negative equity; if no keeper runs for about a day, unpaid funding can exceed the position's value, and the difference falls on insurance, then the vault.
-7. **The agent runs as an ordinary process,** on a cloud VM. A container image with TEE attestation (an Intel TDX quote bound to the signing key, `deploy/phala/`) is built and tested but not deployed.
-8. **Deposits from other chains deliver on mainnet only.** On testnet the app shows a live NEAR Intents quote and stops there.
-9. **Margin shocks are not calibrated, and the contract is unaudited.** Testnet only.
 
 ## Deployment
 
