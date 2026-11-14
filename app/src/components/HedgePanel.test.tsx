@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import hedgeFixture from '../../../agent/tests/fixtures/hedge_status.json';
 import { parseHedge } from '../backend/agent';
 import type { HedgeJson, HedgeStatus } from '../backend/types';
-import { HedgeView, signedUsd } from './HedgePanel';
+import { HedgeView, rowSummary, signedUsd } from './HedgePanel';
 
 // The fixture is what the agent's hedger really reports (agent/tests/test_hedger.py keeps it so).
 const live = parseHedge(hedgeFixture.enabled as HedgeJson);
@@ -63,4 +63,11 @@ test('profit and loss is signed, and a loss under half a cent is not shown as mi
 test('a hedge on hold shows why', () => {
   const held: HedgeStatus = { ...live, rows: [{ ...live.rows[0], state: 'hold', reason: "the contract's spot is stale or missing" }] };
   expect(text(held)).toContain("On hold: the contract's spot is stale or missing");
+});
+
+test('a book too small to hedge says so instead of "Hedged"', () => {
+  const base = { underlying: 'ETH', band: 0.0135, gap: 0.0035, mid: 1850, basisBps: 0, reason: 'inside the deadband' } as never;
+  expect(rowSummary({ ...(base as object), state: 'balanced', target: 0.0035, position: 0 } as never).text).toMatch(/Too small to hedge/);
+  expect(rowSummary({ ...(base as object), state: 'balanced', target: 0.0708, position: 0.0708 } as never).text).toBe('Hedged');
+  expect(rowSummary({ ...(base as object), state: 'balanced', target: 0, position: 0 } as never).text).toBe('Hedged');
 });

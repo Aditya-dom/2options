@@ -19,7 +19,11 @@ const explorer = (h: HedgeStatus) =>
 export function rowSummary(r: HedgeRow): { text: string; tone: 'ok' | 'warn' } {
   if (r.state === 'hold') return { text: `On hold: ${r.reason}`, tone: 'warn' };
   if (r.state === 'trade') return { text: 'Rebalancing', tone: 'ok' };
-  if (r.state === 'balanced') return { text: 'Hedged', tone: 'ok' };
+  if (r.state === 'balanced') {
+    // A small book is left unhedged on purpose: below the band an order costs more than the risk.
+    if ((r.position ?? 0) === 0 && (r.target ?? 0) !== 0) return { text: 'Too small to hedge (under the band)', tone: 'ok' };
+    return { text: 'Hedged', tone: 'ok' };
+  }
   return { text: 'Not hedged', tone: 'warn' };
 }
 
