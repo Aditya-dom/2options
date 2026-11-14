@@ -195,6 +195,20 @@ class FakeChain:
             if self.account_id not in self.accounts:
                 raise TxError("liquidator needs an account to receive the reward")
             acct = self.accounts[a["account_id"]]
+            # As lib.rs: charge the funding owed, then test equity and the ratio.
+            owed = sum(
+                margin.mul_div_ceil(
+                    int(p["size"]),
+                    int(self.series[p["series"]]["funding_index"]) - int(p["entry_index"]),
+                    margin.SIZE_SCALE,
+                )
+                for p in acct["positions"]
+                if "entry_index" in p
+            )
+            equity, req = int(acct["equity"]) - owed, int(acct["requirement"])
+            ratio = self.params["liquidation_ratio_bps"]
+            if not (equity < 0 or (req > 0 and equity * margin.BPS < req * ratio)):
+                raise TxError("account is not liquidatable")
             acct["positions"] = []
         else:
             raise AssertionError(f"unexpected call {method}")
