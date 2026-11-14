@@ -6,7 +6,8 @@ transactions, from a throwaway account.
 Needs: agent/.env (contract and token ids), the agent running on :8787, and the account's key in
 ~/.near-credentials/testnet/<account>.json (as `near account create-account ... save-to-legacy-keychain`
 leaves it). The account pays its own gas and mints its own test USDC, so nothing here uses the
-owner or keeper key. Not covered: liquidation (needs a price move) and LP claim (1 h cooldown).
+owner or keeper key. Not covered here: liquidation (scripts/liquidation_demo.py runs one live) and
+LP claim (1 h cooldown).
 """
 
 from __future__ import annotations
@@ -38,11 +39,18 @@ def check(ok: bool, name: str, detail: Any = "") -> None:
 
 
 def agent(path: str) -> Any:
-    try:
-        with urllib.request.urlopen(AGENT + path, timeout=15) as r:
-            return json.load(r)
-    except urllib.error.HTTPError as e:
-        return {"http": e.code, **json.load(e)}
+    for attempt in range(3):
+        try:
+            with urllib.request.urlopen(AGENT + path, timeout=20) as r:
+                return json.load(r)
+        except urllib.error.HTTPError as e:
+            return {"http": e.code, **json.load(e)}
+        except (urllib.error.URLError, TimeoutError):
+            # The agent answers from chain state; a stalled public RPC behind it shows up here.
+            if attempt == 2:
+                raise
+            time.sleep(3)
+    raise AssertionError("unreachable")
 
 
 def main() -> int:
@@ -164,6 +172,26 @@ def main() -> int:
     )
 
     # -- trading ----------------------------------------------------------------------------
+    # A long has no margin requirement, so this rule is all that stops a buy on credit. The
+    # deepest in-the-money call costs the most per unit of risk the vault takes on.
+    deep = min(
+        (s for s in view(contract, "list_series") if s["kind"] == "Call" and s["id"] in chain),
+        key=lambda s: int(s["strike"]),
+    )["id"]
+    cash = int(account()["collateral"])
+    too_many = (cash * 12 // 10 * ONE // int(chain[deep]["ask"]) // 1_000 + 1) * 1_000
+    credit = quote(deep, "Buy", too_many)
+    err = (
+        fails(lambda: trade(credit))
+        if "quote" in credit
+        else f"agent refused: {credit.get('error')}"
+    )
+    check(
+        "not enough cash to pay the premium" in err and int(account()["collateral"]) == cash,
+        "a buy that costs more than the account's cash is rejected",
+        f"{too_many / ONE:g} {deep}: {err[-50:]}",
+    )
+
     q = quote(call, "Buy", 2 * ONE)
     before = int(account()["collateral"])
     r = trade(q)
@@ -183,7 +211,9 @@ def main() -> int:
     forged = {"quote": {**q2["quote"], "price": "1"}, "signature": q2["signature"]}
     err = fails(lambda: trade(forged))
     check("invalid agent signature" in err, "a tampered price is rejected", err[-60:])
-    other = quote(call, "Buy", ONE, taker=os.environ["OWNER_ACCOUNT_ID"])
+    # Any other account the agent will quote for: the keeper always has a contract balance.
+    someone_else = os.environ.get("KEEPER_ACCOUNT_ID") or os.environ["OWNER_ACCOUNT_ID"]
+    other = quote(call, "Buy", ONE, taker=someone_else)
     err = fails(lambda: trade(other)) if "quote" in other else "agent refused"
     check("different taker" in err, "someone else's quote is rejected", err[-60:])
 
