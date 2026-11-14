@@ -6,9 +6,7 @@
 
 2Options is an everlasting-options exchange. A call or put has no expiry date: instead of buying a dated contract and rolling it, the holder pays a small funding amount every hour for as long as they keep it. A NEAR smart contract holds every dollar, enforces margin and settles funding. An off-chain agent prices the options and signs quotes, and the contract checks each quote against its own limits before anything moves.
 
-- **Live app:** https://2options.xyz (NEAR testnet)
-- **Agent API:** https://api.2options.xyz ([`/status` page in the app](https://2options.xyz/#/status) shows every component's health)
-- **Hackathon:** NEAR Hackathon, 1–14 November 2026. Tracks: **Unstoppable DeFi** (`defi`) and **AI Security & Defense** (`security`).
+**Live on NEAR testnet at [2options.xyz](https://2options.xyz).** Built at NEAR Hackathon for the Unstoppable DeFi and AI Security & Defense tracks.
 
 | Testnet | Account |
 |---|---|
@@ -21,7 +19,9 @@
 2. Click **FAUCET** in the header: 2,000 test USDC, once a day per account.
 3. **Deposit** it as collateral, click an **Ask** in the option chain to buy (or a **Bid** to sell), get a firm quote and confirm.
 
-After the first deposit, trades need no wallet pop-up: the app adds a limited key that can only call the contract's trading methods. On this shared deployment each trade is capped at 0.1 contracts so the hedge stays small (see [Deployment](#deployment)).
+After the first deposit, trades need no wallet pop-up: the app adds a limited key that can only call the contract's trading methods. On this shared deployment each trade is capped at 0.1 contracts so the hedge stays small.
+
+The [status page](https://2options.xyz/#/status) shows the live health of every component.
 
 ## How it works
 
@@ -46,7 +46,7 @@ flowchart LR
 |---|---|---|
 | Contract | `contracts/twooptions` (Rust, near-sdk) | Holds USDC. Trader collateral, an LP vault with shares, trades against signed quotes, margin for traders and for the vault, hourly funding, liquidation, pause |
 | Agent | `agent/` (Python: standard library plus `cryptography`) | Prices the chain, signs quotes, posts spot, settles funding, liquidates, hedges the vault's delta on Hyperliquid, serves the HTTP API |
-| App | `app/` (React, Vite) | Wallet login, faucet, deposit and withdraw, option chain, trade ticket, multi-leg strategies, positions and history, funding, LP vault, status page, deposit from other chains via NEAR Intents |
+| App | `app/` (React, Vite) | Wallet login, faucet, deposit and withdraw, option chain, trade ticket, multi-leg strategies, positions and history, funding, LP vault, status page, deposit quotes from other chains via NEAR Intents (delivery on mainnet) |
 | Test USDC | `contracts/test-usdc` | 6-decimal testnet token with a rate-limited faucet |
 
 **A trade.** The agent prices the quote from the contract's own cached spot and signs `Quote { series, taker, side, size, price, nonce, expiry }`. The contract then checks, in order: the caller is the taker, the quote has not expired, the signature is from a registered key, size and price are in range, the price is inside a band around intrinsic value and near the last funding mark, the nonce is unused, and margin holds for both the trader and the vault after the trade. Any failure reverts the whole transaction.
@@ -55,7 +55,7 @@ flowchart LR
 
 **Liquidation.** Anyone may close an account whose equity is below 1.15× its margin requirement, or negative once owed funding is counted. The contract indexes its accounts and answers, a page at a time, which ones `liquidate` would accept (`list_liquidatable`), so the keeper covers every account with the contract's own test.
 
-**Hedging.** The vault is the counterparty to every trade. The agent offsets the vault's net delta with an ETH perp on Hyperliquid, re-hedging only when the gap is worth more than the trading cost. The hedge lives in an exchange account the operator holds, outside the contract (see [Known limitations](#known-limitations)).
+**Hedging.** The vault is the counterparty to every trade. The agent offsets the vault's net delta with an ETH perp on Hyperliquid, re-hedging only when the gap is worth more than the trading cost. The hedge lives in an exchange account the operator holds, outside the contract.
 
 ## Security
 
@@ -79,28 +79,6 @@ Controls, all in `contracts/twooptions/src/lib.rs`:
 - **Arithmetic.** Checked integer fixed-point, rounding in the vault's favour. No floats on chain.
 - **Solvency invariant.** Trader cash + vault cash + insurance + pending LP claims = net USDC received, checked after every step of a 2,000-step random test.
 - **Circuit breaker.** If vault cash plus insurance goes negative, withdrawals halt until it is recapitalised.
-
-### Known limitations
-
-1. **A stolen agent key can cost the vault up to 10% of its cash per hour.** Round trips at the edges of the allowed price range are the attack; the mark band and the hourly payout cap bound it, and the owner can pause and rotate the key (`contracts/README.md`, "Limits on the agent key").
-2. **Spot is agent-signed.** There is no independent oracle on chain. The feed takes the median of four venues and refuses to post when they disagree, but that runs off chain.
-3. **The hedge is off chain and trusted.** It sits in an operator-held exchange account; its profit and loss does not flow into the vault, and nothing on chain proves it exists.
-4. **A quote is a short free option.** A taker can hold a signed quote for its lifetime (under 30 s) and use it only if spot moved their way. The spread is the only compensation.
-5. **Marks go stale between funding settlements.** Equity is valued conservatively, but the LP share price can lag fast moves in time value.
-6. **Longs have no funding buffer.** A long becomes liquidatable only at negative equity; if no keeper runs for about a day, unpaid funding can exceed the position's value, and the difference falls on insurance, then the vault.
-7. **The agent runs as an ordinary process,** on a cloud VM. A container image with TEE attestation (an Intel TDX quote bound to the signing key, `deploy/phala/`) is built and tested but not deployed.
-8. **Deposits from other chains deliver on mainnet only.** On testnet the app shows a live NEAR Intents quote and stops there.
-9. **Margin shocks are not calibrated, and the contract is unaudited.** Testnet only.
-
-## Deployment
-
-| Piece | Where | Cost |
-|---|---|---|
-| App | Vercel, at `2options.xyz` (`app/vercel.json`) | free (Hobby) |
-| Agent: quotes, keeper, hedger | One Oracle Cloud Always Free VM behind Caddy, at `api.2options.xyz` (`deploy/oracle/`) | free |
-| Hedge venue | Hyperliquid testnet | test funds |
-
-The shared deployment caps sizes in the agent so the hedge uses little test money: at most 0.1 contracts per trade, 0.1 per account per series, and 0.25 open across all accounts per underlying; the hedge is capped at $500. Closing a position is always allowed. The limits are agent settings (`TWOOPTIONS_MAX_*`, `HEDGE_MAX_*`), published at `/limits`, and the app shows them on the ticket.
 
 ## Run it locally
 
@@ -132,26 +110,6 @@ make near-agent                     # quote server + keeper on :8787
 
 Hedging stays off until `HYPERLIQUID_PRIVATE_KEY` is set. Use one exchange account per agent: two hedgers on one account trade against each other.
 
-## Tests
-
-`make near-test` runs the unit tests of the contract, the test token, the agent and the app. Beyond ordinary cases they check:
-
-- the solvency invariant after every step of a random run, including liquidations;
-- that `list_liquidatable` names an account exactly when `liquidate` accepts it;
-- byte-for-byte parity of signed messages between the contract, the agent and the app;
-- that the agent's and the app's margin code match the contract on a generated fixture, and that the agent's NEAR transaction encoder matches `@near-js/transactions`.
-
-CI (`.github/workflows/near.yml`) runs the same, plus clippy, the wasm build and a check that the parity fixtures match the contract.
-
-Scripts in `agent/scripts/` exercise a live deployment with real testnet transactions:
-
-```bash
-cd agent
-uv run python scripts/e2e_testnet.py <account.testnet>        # faucet, deposit, trades, rejected forgeries and replays, LP, withdraw
-uv run python scripts/liquidation_demo.py <account.testnet>   # a long that cannot pay its funding is closed by the keeper
-uv run python scripts/hedge_smoke.py --trade                  # a minimum-size round trip on Hyperliquid testnet
-```
-
 ## Documentation
 
 | | |
@@ -160,7 +118,4 @@ uv run python scripts/hedge_smoke.py --trade                  # a minimum-size r
 | `agent/README.md` | Agent setup, HTTP API, pricing model, keeper and hedger |
 | `app/README.md` | App modes, screens and layout |
 | `deploy/oracle/README.md` | The live deployment and how to rebuild it |
-
-## License
-
-MIT
+| `deploy/phala/README.md` | The TEE container image (built, not deployed) |
