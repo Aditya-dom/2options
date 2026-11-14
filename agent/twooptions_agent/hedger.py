@@ -19,6 +19,10 @@ Rules it follows:
   book it hedges cannot change either.
 - When the book is empty the hedge is closed completely, down to the last lot, rather than left
   inside the deadband.
+- It never closes a position it did not open. With an empty book, a position that was on the
+  account before this process traded there is left alone and reported: it belongs to a
+  different agent or to a person. (Checked the hard way: an agent with an empty book closed
+  another deployment's hedge.)
 - One hedger per exchange account. If the position on the venue changes without an order from
   this hedger, something else is trading the account (a second agent, a person, the venue's own
   liquidation). It then stops for that asset until the agent is restarted, instead of trading
@@ -221,6 +225,8 @@ class Hedger:
         #: Per asset: why hedging is stopped, once the position was seen to change without an
         #: order from this hedger. Cleared only by a restart.
         self._foreign: dict[str, str] = {}
+        #: Assets this process has sent an order for. Only their positions are its to close.
+        self._traded: set[str] = set()
 
     # -- one pass -----------------------------------------------------------------------------
 
@@ -261,8 +267,17 @@ class Hedger:
                     )
                     log.error("hedger stopped for %s: %s", coin, self._foreign[coin])
             asset = assets.get(coin)
+            book_is_empty = target == 0 and inv.net_gamma.get(coin, 0.0) == 0
             if coin in self._foreign:
                 d = Decision("hold", self._foreign[coin])
+            elif position != 0 and book_is_empty and coin not in self._traded:
+                d = Decision(
+                    "hold",
+                    f"the account holds {to_wire(position)} {coin} that this agent did not open, "
+                    "and its own book is empty, so it leaves the position alone; it belongs to "
+                    "another agent or was opened by hand",
+                    target=0.0,
+                )
             elif asset is None:
                 d = Decision("hold", f"{self.venue.name} does not list {coin}")
             else:
@@ -285,6 +300,7 @@ class Hedger:
                     band=d.band,
                 )
             if d.state == "trade" and asset is not None:
+                self._traded.add(coin)
                 try:
                     res = self._send(coin, asset, d, mids[coin])
                 except Exception:

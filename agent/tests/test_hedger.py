@@ -388,10 +388,10 @@ def test_a_position_change_it_did_not_make_stops_the_hedger(rig: Rig) -> None:
     assert len(rig.venue.orders) == 1 and rig.row()["state"] == "hold"
 
 
-def test_two_hedgers_on_one_account_stop_after_one_exchange() -> None:
-    """Seen live on Nov 14: one hedger with open options and one with an empty book shared an
-    exchange account. Each pass the first bought its hedge and the second closed it: seven
-    round trips in 70 seconds, each paying the spread and two fees."""
+def test_an_agent_with_an_empty_book_leaves_another_agents_hedge_alone() -> None:
+    """Seen live on Nov 14: the shared deployment's agent bought its 0.585 ETH hedge, and a test
+    agent on the same exchange account, whose own book was empty, closed it as if it were a
+    leftover of its own. Seven times in 70 seconds, each paying the spread and two fees."""
     a, b = Rig(), Rig()
     b.venue = a.venue
     b.hedger.venue = a.venue  # the same exchange account
@@ -401,12 +401,51 @@ def test_two_hedgers_on_one_account_stop_after_one_exchange() -> None:
             rig.hedger.tick()
         for rig in (a, b):
             rig.advance(5)
-    # a opened its hedge, b (taking it for a leftover of its own) closed it, and then a saw a
-    # position it had not left and stopped. Without the guard this loop makes 40 orders.
-    assert len(a.venue.orders) == 2
+    assert len(a.venue.orders) == 1  # a's hedge, and nothing else: 40 orders without the rule
+    assert a.row()["state"] == "balanced" and a.venue.position > 0
+    assert b.row()["state"] == "hold" and "did not open" in b.row()["reason"]
+    assert D(b.row()["position"]) == a.venue.position and b.row()["target"] == 0
+
+
+def test_a_position_found_at_start_is_only_touched_once_the_book_needs_a_hedge(rig: Rig) -> None:
+    rig.venue.position = D("0.58")  # on the account before this agent ever traded
+    for _ in range(3):
+        rig.hedger.tick()
+        rig.advance(5)
+    assert rig.venue.orders == [] and rig.row()["state"] == "hold"
+    # Its own book opens: from here it hedges to its target, starting from what is there.
+    rig.traders_hold("ETH-2100-C", 4)
+    rig.hedger.tick()
+    assert len(rig.venue.orders) == 1 and rig.venue.orders[0]["is_buy"]
+    assert float(rig.venue.position) == pytest.approx(rig.row()["target"], abs=1e-4)
+    # And once it has traded there, an empty book means the position is its own to close.
+    rig.traders_hold("ETH-2100-C", 0)
+    rig.advance(5)
+    rig.hedger.tick()
+    assert rig.venue.position == 0 and rig.venue.orders[-1]["reduce_only"]
+
+
+def test_two_hedgers_with_books_of_their_own_stop_after_one_exchange() -> None:
+    """Both think the account is theirs and want different positions. The first to see a
+    position it did not leave stops, so they trade against each other once, not for ever."""
+    a, b = Rig(), Rig()
+    b.venue = a.venue
+    b.hedger.venue = a.venue
+    a.traders_hold("ETH-2100-C", 4)  # a wants to be long
+    b.traders_hold("ETH-2100-P", 4)  # b wants to be short
+    for _ in range(20):
+        for rig in (a, b):
+            rig.hedger.tick()
+        for rig in (a, b):
+            rig.advance(5)
+    orders = a.venue.orders
+    # a bought once; b sold through it (in two orders, because of the order size cap); a saw a
+    # position it had not left and stopped. Nothing after that.
+    assert [o["is_buy"] for o in orders] == [True, False, False]
     assert a.row()["state"] == "hold"
     assert "something else is trading this account" in a.row()["reason"]
-    assert a.venue.position == 0 and b.row()["state"] == "balanced"
+    assert b.row()["state"] == "balanced" and a.venue.position < 0
+    assert float(a.venue.position) == pytest.approx(b.row()["target"], abs=1e-4)
 
 
 def test_its_own_fill_showing_up_late_is_not_mistaken_for_someone_else(rig: Rig) -> None:
