@@ -167,6 +167,9 @@ class FakeVenue:
         self.lands_despite_error = False
         self.reject: str | None = None
         self.fill_fraction = D(1)
+        #: This many reads still show `lag_position`, as when a fill is not visible yet.
+        self.lag_reads = 0
+        self.lag_position = D(0)
 
     def assets(self) -> dict[str, hl.Asset]:
         return self.listed
@@ -179,7 +182,11 @@ class FakeVenue:
     def state(self) -> hl.AccountState:
         if self.fail_reads:
             raise hl.TransportError("/info: timed out")
-        pos = {"ETH": hl.Position("ETH", self.position, D("2100"), D("0"))} if self.position else {}
+        shown = self.position
+        if self.lag_reads > 0:
+            self.lag_reads -= 1
+            shown = self.lag_position
+        pos = {"ETH": hl.Position("ETH", shown, D("2100"), D("0"))} if shown else {}
         return hl.AccountState(D("1000"), D("0"), D("1000"), pos)
 
     def _apply(self, is_buy: bool, size: Decimal) -> Decimal:
@@ -238,7 +245,7 @@ class Rig:
             ChainCache(self.chain.view, max_age_s=0),
             self.quoter,
             self.store,
-            cfg,
+            cfg or HedgeConfig(recheck_s=0.0),
             clock=lambda: self.chain.now_ns,
         )
 
@@ -355,6 +362,81 @@ def test_spot_noise_does_not_re_trade_the_hedge_but_a_real_move_does(rig: Rig) -
     assert abs(rig.row()["gap"]) < 1e-4
 
 
+def test_a_position_change_it_did_not_make_stops_the_hedger(rig: Rig) -> None:
+    rig.traders_hold("ETH-2100-C", 4)
+    rig.hedger.tick()
+    held = rig.venue.position
+    rig.advance(5)
+    rig.hedger.tick()
+    assert len(rig.venue.orders) == 1 and rig.row()["state"] == "balanced"
+
+    rig.venue.position = held - D("0.5")  # someone else sold half an ETH on this account
+    rig.advance(5)
+    rig.hedger.tick()
+    row = rig.row()
+    assert len(rig.venue.orders) == 1, "it must not trade against whoever that was"
+    assert row["state"] == "hold" and "no order from this hedger" in row["reason"]
+    assert f"went from {hl.to_wire(held)} to {hl.to_wire(held - D('0.5'))}" in row["reason"]
+    assert D(row["position"]) == held - D("0.5")  # and it still shows what the venue holds
+
+    # It stays stopped: not when the book changes, not when the position is put back.
+    rig.traders_hold("ETH-2100-C", 0)
+    rig.venue.position = held
+    for _ in range(5):
+        rig.advance(5)
+        rig.hedger.tick()
+    assert len(rig.venue.orders) == 1 and rig.row()["state"] == "hold"
+
+
+def test_two_hedgers_on_one_account_stop_after_one_exchange() -> None:
+    """Seen live on Nov 14: one hedger with open options and one with an empty book shared an
+    exchange account. Each pass the first bought its hedge and the second closed it: seven
+    round trips in 70 seconds, each paying the spread and two fees."""
+    a, b = Rig(), Rig()
+    b.venue = a.venue
+    b.hedger.venue = a.venue  # the same exchange account
+    a.traders_hold("ETH-2100-C", 4)  # a's book needs a long hedge; b's book is empty
+    for _ in range(20):
+        for rig in (a, b):
+            rig.hedger.tick()
+        for rig in (a, b):
+            rig.advance(5)
+    # a opened its hedge, b (taking it for a leftover of its own) closed it, and then a saw a
+    # position it had not left and stopped. Without the guard this loop makes 40 orders.
+    assert len(a.venue.orders) == 2
+    assert a.row()["state"] == "hold"
+    assert "something else is trading this account" in a.row()["reason"]
+    assert a.venue.position == 0 and b.row()["state"] == "balanced"
+
+
+def test_its_own_fill_showing_up_late_is_not_mistaken_for_someone_else(rig: Rig) -> None:
+    rig.traders_hold("ETH-2100-C", 4)
+    rig.hedger.tick()
+    filled = rig.venue.position
+    # The venue is slow to show the fill: the read at the start of the next pass still says 0.
+    rig.venue.lag_reads, rig.venue.lag_position = 1, D(0)
+    rig.advance(5)
+    rig.hedger.tick()
+    assert rig.hedger._foreign == {} and len(rig.venue.orders) == 1
+    assert D(rig.row()["position"]) == filled and rig.row()["state"] == "balanced"
+
+
+def test_after_a_timeout_either_outcome_of_its_own_order_is_accepted() -> None:
+    for lands in (False, True):
+        r = Rig()
+        r.traders_hold("ETH-2100-C", 4)
+        r.venue.ioc_error = hl.TransportError("/exchange: timed out")
+        r.venue.lands_despite_error = lands
+        with pytest.raises(hl.TransportError):
+            r.hedger.tick()
+        r.venue.ioc_error = None
+        for _ in range(4):
+            r.advance(5)
+            r.hedger.tick()
+        assert r.hedger._foreign == {}, lands
+        assert float(r.venue.position) == pytest.approx(r.row()["target"], abs=1e-4)
+
+
 def test_a_stale_contract_spot_sends_nothing(rig: Rig) -> None:
     rig.traders_hold("ETH-2100-C", 4)
     rig.advance(45, keep_spot_fresh=False)  # the contract refuses a spot older than 30 s
@@ -460,7 +542,7 @@ def test_a_partial_fill_is_completed_on_the_next_pass(rig: Rig) -> None:
 
 
 def test_a_large_gap_is_worked_off_in_capped_orders() -> None:
-    rig = Rig(HedgeConfig(max_order_usd=1_050.0))  # 0.5 ETH at a 2,100 mid
+    rig = Rig(HedgeConfig(max_order_usd=1_050.0, recheck_s=0.0))  # 0.5 ETH at a 2,100 mid
     rig.traders_hold("ETH-2100-C", 4)
     sizes = []
     for _ in range(8):
@@ -506,7 +588,7 @@ def test_random_markets_and_failures_never_break_the_hedgers_rules(seed: int) ->
     fills. Whatever happens, the rules in hedger.py hold on every pass; the fake venue also
     refuses any order the real one would (lot, tick, minimum, expiry, reduce-only)."""
     rng = random.Random(seed)
-    cfg = HedgeConfig(max_order_usd=3_000.0, max_position_usd=20_000.0)
+    cfg = HedgeConfig(max_order_usd=3_000.0, max_position_usd=20_000.0, recheck_s=0.0)
     rig = Rig(cfg)
     spot = 2_110.0
     quiet_until_ms = 0  # no order may be sent before this (after a timeout or a refusal)
@@ -584,6 +666,8 @@ def test_random_markets_and_failures_never_break_the_hedgers_rules(seed: int) ->
             # The status the app shows is the venue's position after the order, never a guess.
             assert D(rig.row()["position"]) == rig.venue.position
 
+    # None of its own fills, timeouts, refusals or partial fills looked like someone else's.
+    assert rig.hedger._foreign == {}
     # The run must have exercised every path, not just the easy one.
     assert seen["orders"] > 40 and seen["capped"] > 0, seen
     assert (

@@ -7,7 +7,7 @@ Standard library plus `cryptography`. No web framework and no NEAR SDK, so the i
 ```bash
 cd agent
 uv sync --python 3.11
-uv run pytest                                    # 199 tests
+uv run pytest                                    # 203 tests
 uv run ruff check . && uv run mypy twooptions_agent
 
 cp .env.example .env                             # fill in keys; .env is ignored by git
@@ -115,9 +115,12 @@ uv run python scripts/hedge_smoke.py --trade   # buy and sell back about 12 USD 
 - When the book is empty the hedge is closed completely with a reduce-only order, whatever its size. Hyperliquid accepts a reduce-only order that closes a whole position even under its 10 USD minimum (checked with an 8.52 USD close), so no remainder is left inside the deadband.
 - **It sends nothing when in doubt:** the contract's spot is stale, the venue cannot be read, the venue does not list the asset, or the venue's price is more than 500 bps from the contract's spot. With a stale spot the contract refuses trades, so the book the hedge covers cannot change either.
 - After a request times out, no new order goes out for that asset until the first one has expired on the venue, so a retry can never double the hedge. After a refusal it waits 30 s.
+- **One hedger per exchange account.** If the position on the venue changes with no order from this hedger, something else is trading the account: a second agent, a person, or the venue's own liquidation. It stops hedging that asset and says why in `/hedge` until the agent is restarted, instead of trading against it. On Nov 14 two agents with different books shared one account: one bought its 0.585 ETH hedge and the other, whose book was empty, closed it, seven times in 70 seconds at about 3.70 USD a round.
 - `HYPERLIQUID_NETWORK` must match `NEAR_NETWORK`: a testnet book hedged with real money, or the reverse, is refused at start-up.
 
 **Cost, and why the band follows gamma.** Each rebalance crosses half the venue's spread and pays its taker fee. When traders are net long options the vault is short gamma, so re-hedging buys after rises and sells after falls; the funding the vault collects is what pays for that. These options live about a day, so their delta moves quickly, and a band fixed in dollars re-trades on a few basis points of spot. Measured on Nov 14 with a 25 USD band alone: 41 fills and about 5,000 USD traded in 21 minutes to hedge three calls worth 11 USD, at a cost of about 17 USD. With the gamma term the same test made one order while the position was open and one to close it. (That test book settles funding every 3 minutes, so its options live about 72 minutes and its gamma is several times the shared deployment's; there the band comes to about 15% of the hedge for an at-the-money book.) Between re-hedges the vault carries the drift inside the band: `HEDGE_REHEDGE_MOVE_BPS` and `HEDGE_DEADBAND_USD` trade tracking against cost.
+
+**On Hyperliquid testnet, keep it small.** The testnet book is thin: an order of 1 ETH or more walks it and a round trip costs about 0.4%. The day's testing took a 999 USDC test account to about 915. For a demo set `HEDGE_MAX_ORDER_USD=25` and `HEDGE_MAX_POSITION_USD=50`; the mechanism shows just as well and a round trip costs cents.
 
 **The quoter does not yet charge for the hedge.** Its floor on the half-spread is 0.5 bp of delta-weighted spot (`spread_delta_bps`), while hedging that delta as a taker costs several bps even on a liquid book. A 2-contract trade opened and closed within a minute earned 0.37 USD of option spread and cost about 5 USD to hedge on testnet's wide book. Raise that floor towards the venue's taker fee plus half its spread before reading anything into hedged P&L.
 

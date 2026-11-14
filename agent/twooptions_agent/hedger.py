@@ -19,6 +19,11 @@ Rules it follows:
   book it hedges cannot change either.
 - When the book is empty the hedge is closed completely, down to the last lot, rather than left
   inside the deadband.
+- One hedger per exchange account. If the position on the venue changes without an order from
+  this hedger, something else is trading the account (a second agent, a person, the venue's own
+  liquidation). It then stops for that asset until the agent is restarted, instead of trading
+  against whatever it is. Seen on Nov 14: two hedgers with different books on one account bought
+  and sold the same 0.585 ETH seven times in 70 seconds.
 - Orders never rest. Each is immediate-or-cancel with a price limit and an expiry, so a request
   that is delayed in transit is refused by the venue instead of filling late, and the next pass
   works from the position actually held.
@@ -106,6 +111,9 @@ class HedgeConfig:
     order_ttl_s: float = 8.0
     #: After the venue refuses an order, wait before trying that asset again.
     reject_backoff_s: float = 30.0
+    #: When the venue's position is not the one this hedger left, read it once more after this
+    #: long before concluding that something else is trading the account.
+    recheck_s: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -206,6 +214,13 @@ class Hedger:
         #: Per asset: no new order before this time (ms). Set when an order's fate is unknown
         #: (until it has expired on the venue) and after a refusal (back-off).
         self._blocked_until_ms: dict[str, int] = {}
+        #: Per asset: the position this hedger left on the venue, as a closed range. A single
+        #: value normally; a range after an order whose outcome is unknown. Unset until the
+        #: first pass, which adopts whatever the account holds.
+        self._expected: dict[str, tuple[Decimal, Decimal]] = {}
+        #: Per asset: why hedging is stopped, once the position was seen to change without an
+        #: order from this hedger. Cleared only by a restart.
+        self._foreign: dict[str, str] = {}
 
     # -- one pass -----------------------------------------------------------------------------
 
@@ -227,8 +242,28 @@ class Hedger:
             target = None if stale else inv.hedge_target.get(coin, 0.0)
             held = state.positions.get(coin)
             position = held.size if held else Decimal(0)
+            left = self._expected.get(coin)
+            if (
+                coin not in self._foreign
+                and left is not None
+                and not left[0] <= position <= left[1]
+            ):
+                time.sleep(self.cfg.recheck_s)  # this hedger's own fill may not be visible yet
+                state = self.venue.state()
+                held = state.positions.get(coin)
+                position = held.size if held else Decimal(0)
+                if not left[0] <= position <= left[1]:
+                    was = to_wire(left[0]) if left[0] == left[1] else f"{to_wire(left[0])}..{to_wire(left[1])}"  # fmt: skip
+                    self._foreign[coin] = (
+                        f"the position on the venue went from {was} to {to_wire(position)} with no "
+                        "order from this hedger, so something else is trading this account; "
+                        "hedging is stopped until the agent is restarted"
+                    )
+                    log.error("hedger stopped for %s: %s", coin, self._foreign[coin])
             asset = assets.get(coin)
-            if asset is None:
+            if coin in self._foreign:
+                d = Decision("hold", self._foreign[coin])
+            elif asset is None:
                 d = Decision("hold", f"{self.venue.name} does not list {coin}")
             else:
                 spot_usd = spot / SPOT_SCALE if spot is not None else None
@@ -250,10 +285,23 @@ class Hedger:
                     band=d.band,
                 )
             if d.state == "trade" and asset is not None:
-                self._send(coin, asset, d, mids[coin])
+                try:
+                    res = self._send(coin, asset, d, mids[coin])
+                except Exception:
+                    # Unknown outcome: anything from untouched to fully filled is this hedger's.
+                    lo, hi = sorted((position, position + d.size))
+                    self._expected[coin] = (lo, hi)
+                    raise
+                # What this order did, from its own answer. Only used to tell this hedger's fills
+                # from someone else's on the next pass; the position shown and hedged is always
+                # the venue's.
+                after = position + (res.filled if d.size > 0 else -res.filled)
+                self._expected[coin] = (after, after)
                 state = self.venue.state()  # the venue, not the order's answer, says what we hold
                 held = state.positions.get(coin)
                 position = held.size if held else Decimal(0)
+            elif coin not in self._foreign:
+                self._expected[coin] = (position, position)
             shown = d.target if d.target is not None else target
             rows[coin] = {
                 "target": None if shown is None else round(shown, 6),
@@ -277,7 +325,7 @@ class Hedger:
             self._updated_ns = now
             self._error = None
 
-    def _send(self, coin: str, asset: Asset, d: Decision, mid: Decimal) -> None:
+    def _send(self, coin: str, asset: Asset, d: Decision, mid: Decimal) -> OrderResult:
         is_buy = d.size > 0
         size = abs(d.size)
         slip = Decimal(repr(self.cfg.slippage_bps)) / 10_000
@@ -327,6 +375,7 @@ class Hedger:
             res.filled,
             f" ({res.detail})" if res.detail else "",
         )
+        return res
 
     # -- reporting ----------------------------------------------------------------------------
 
