@@ -46,8 +46,10 @@ export type ThemeMode = 'light' | 'dark';
 
 export const useThemeStore = create<{ mode: ThemeMode; toggle: () => void }>()(
   persist(
-    set => ({ mode: 'light', toggle: () => set(s => ({ mode: s.mode === 'light' ? 'dark' : 'light' })) }),
-    { name: 'twooptions-theme-v2' },
+    // Dark by default; the toggle in the header switches and the choice is remembered. The key
+    // moved to v3 so earlier visitors, who were given light by default, start dark too.
+    set => ({ mode: 'dark', toggle: () => set(s => ({ mode: s.mode === 'light' ? 'dark' : 'light' })) }),
+    { name: 'twooptions-theme-v3' },
   ),
 );
 
