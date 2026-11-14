@@ -242,6 +242,8 @@ class Account:
         #: After a send that timed out, how long to keep asking for the outcome before giving up.
         self.recovery_s = recovery_s
         self._nonce: int | None = None
+        self._anchor: bytes | None = None
+        self._anchor_at = 0.0
 
     @property
     def public_key(self) -> str:
@@ -300,12 +302,26 @@ class Account:
                 last = e
         raise RpcError(f"{tx_hash}: no outcome after a timeout ({last})")
 
+    def _block_hash(self, max_age_s: float = 60.0) -> bytes:
+        """The hash of a final block to anchor transactions to, refreshed once a minute.
+
+        The access-key query above answers with an optimistic block, one that is not final yet.
+        A transaction anchored to it is refused as `Expired` by any node that does not have
+        that block: another provider after a failover, or the same one after a short fork. A
+        final block is known everywhere and stays valid as an anchor for about a day."""
+        if self._anchor is None or time.monotonic() - self._anchor_at > max_age_s:
+            r = _call(self.rpc_url, "block", {"finality": "final"}, self.timeout)
+            self._anchor = b58decode(r["header"]["hash"])
+            self._anchor_at = time.monotonic()
+        return self._anchor
+
     def send(
         self, receiver_id: str, actions: list[Action], wait: str = "EXECUTED_OPTIMISTIC"
     ) -> TxResult:
         """Sign and send. With `wait="INCLUDED"` it returns once the transaction is in a block,
         without its outcome: no logs, no return value, and a contract panic is not seen."""
-        chain_nonce, block_hash = self._access_key()
+        chain_nonce, _ = self._access_key()  # the freshest nonce; its block is not final
+        block_hash = self._block_hash()
         nonce = max(chain_nonce, self._nonce or 0) + 1
         tx = encode_transaction(
             self.account_id, public_key_bytes(self.key), nonce, receiver_id, block_hash, actions
@@ -314,7 +330,12 @@ class Account:
         # Never reuse this nonce, whether or not the transaction lands: gaps are allowed, and a
         # reused nonce fails if the first one did land (possibly after its send timed out).
         self._nonce = nonce
-        r = self._submit(signed, tx_hash, wait)
+        try:
+            r = self._submit(signed, tx_hash, wait)
+        except RpcError as e:
+            if "Expired" in str(e):
+                self._anchor = None  # fetch a new anchor before the next attempt
+            raise
         if wait not in ("EXECUTED_OPTIMISTIC", "EXECUTED", "FINAL"):
             return TxResult(tx_hash, [], None)
         logs = [
