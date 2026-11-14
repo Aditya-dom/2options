@@ -191,5 +191,11 @@ def cors_origins() -> list[str]:
     return [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
 
 
+def trusted_proxies() -> frozenset[str]:
+    """Addresses of reverse proxies in front of the agent, whose X-Forwarded-For is believed."""
+    raw = os.environ.get("TWOOPTIONS_TRUSTED_PROXIES", "")
+    return frozenset(p.strip() for p in raw.split(",") if p.strip())
+
+
 def data_dir() -> Path:
     return Path(os.environ.get("TWOOPTIONS_DATA_DIR", "").strip() or "data")

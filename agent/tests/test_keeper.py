@@ -310,3 +310,162 @@ def test_posts_refused_on_chain_are_noticed_and_the_feed_resyncs(rig: Rig, caplo
     rig.post()
     assert "resyncing" in caplog.text
     assert rig.chain.spots["ETH"][1] == rig.chain.now_ns  # posting again, in step with the chain
+
+
+# -- the liquidation scan's budget and order ---------------------------------------------------
+
+
+class Clock:
+    """A clock the test moves. Each account read costs `per_read` seconds."""
+
+    def __init__(self) -> None:
+        self.t = 1_000.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+def scanning_rig(per_read: float = 0.5) -> tuple[Rig, Clock, list[str]]:
+    """A rig whose account reads take time and are recorded."""
+    rig, clock, reads = Rig(), Clock(), []
+    rig.keeper = Keeper(
+        CONTRACT, rig.chain, KEY, rig.cache, rig.quoter, rig.feed, rig.store, clock=clock
+    )
+    view = rig.cache.view
+
+    def timed(method: str, args: dict | None = None):  # type: ignore[no-untyped-def]
+        if method == "get_account":
+            clock.t += per_read
+            reads.append(args["account_id"])  # type: ignore[index]
+        return view(method, args)
+
+    rig.cache.view = timed
+    return rig, clock, reads
+
+
+def watch(rig: Rig, accounts: dict[str, dict]) -> None:
+    rig.chain.accounts = {"keeper.testnet": account(10**6, 0, positions=0), **accounts}
+    for a in accounts:
+        rig.store.add_taker(a)
+
+
+def test_a_long_watch_list_is_read_over_several_turns_so_spot_is_never_starved() -> None:
+    rig, clock, reads = scanning_rig(per_read=0.5)
+    watch(rig, {f"a{i:02}.testnet": account(2_000, 1_000) for i in range(20)})
+    turns = []
+    for _ in range(5):
+        before = len(reads)
+        started = clock.t
+        rig.keeper.tick_liquidations()
+        turns.append(len(reads) - before)
+        assert clock.t - started <= rig.keeper.cfg.liquidation_budget_s + 0.5  # one read over
+        clock.t += 1.0  # the spot and funding jobs take their turn
+    assert turns == [4, 4, 4, 4, 4]
+    assert sorted(reads) == sorted(rig.chain.accounts.keys() - {"keeper.testnet"})  # each once
+    assert rig.keeper.status.watch["accounts"] == 20
+
+
+def test_an_account_close_to_liquidation_is_read_every_turn_and_before_the_others() -> None:
+    rig, clock, reads = scanning_rig(per_read=0.5)
+    watch(
+        rig,
+        {
+            **{f"safe{i}.testnet": account(3_000, 1_000) for i in range(6)},
+            "close.testnet": account(1_200, 1_000),  # 1.20 against a ratio of 1.15
+        },
+    )
+    rig.keeper.tick_liquidations()  # nothing is known yet: watch-list order, four of seven
+    assert "close.testnet" not in reads
+    clock.t += 1.0
+    rig.keeper.tick_liquidations()
+    assert "close.testnet" in reads
+    for _ in range(3):  # from now on it leads every turn, though the others are overdue too
+        clock.t += 20.0
+        del reads[:]
+        rig.keeper.tick_liquidations()
+        assert reads[0] == "close.testnet"
+
+
+def test_an_account_with_nothing_open_is_read_rarely_until_it_is_quoted() -> None:
+    rig, clock, reads = scanning_rig(per_read=0.1)
+    watch(rig, {"idle.testnet": account(5_000, 0, positions=0)})
+    rig.keeper.tick_liquidations()
+    assert reads == ["idle.testnet"]
+    clock.t += 60.0
+    rig.keeper.tick_liquidations()
+    assert reads == ["idle.testnet"]  # not again yet
+    clock.t += 61.0
+    rig.keeper.tick_liquidations()
+    assert len(reads) == 2
+
+    # A quote means a trade may follow: it is read on the open-position rhythm for a while,
+    # even though each read still finds nothing open.
+    rig.keeper.touch("idle.testnet")
+    clock.t += 16.0
+    rig.keeper.tick_liquidations()
+    clock.t += 16.0
+    rig.keeper.tick_liquidations()
+    assert len(reads) == 4
+    clock.t += 200.0  # the quote is long past
+    rig.keeper.tick_liquidations()
+    clock.t += 16.0
+    rig.keeper.tick_liquidations()
+    assert len(reads) == 5
+
+
+def test_one_account_that_cannot_be_read_does_not_stop_the_others() -> None:
+    rig, clock, reads = scanning_rig(per_read=0.1)
+    watch(
+        rig,
+        {
+            "broken.testnet": account(2_000, 1_000),
+            "sick.testnet": account(1_000, 1_000),
+        },
+    )
+    inner = rig.cache.view
+
+    def flaky(method: str, args: dict | None = None):  # type: ignore[no-untyped-def]
+        if method == "get_account" and args == {"account_id": "broken.testnet"}:
+            raise RuntimeError("rpc: bad response")
+        return inner(method, args)
+
+    rig.cache.view = flaky
+    with pytest.raises(RuntimeError):
+        rig.keeper.tick_liquidations()
+    assert ("liquidate", {"account_id": "sick.testnet"}) in rig.chain.calls
+    # The broken one is tried again on its next turn, not in a tight loop.
+    rig.chain.calls.clear()
+    clock.t += 1.0
+    rig.keeper.tick_liquidations()
+    assert rig.keeper.status.watch["accounts"] == 2
+
+
+def test_the_scan_reports_how_far_behind_it_is() -> None:
+    rig, clock, _ = scanning_rig(per_read=1.0)  # two reads a turn
+    # Every field is there from the start, before the scan has had a turn.
+    assert rig.keeper.status.to_json()["watch"] == {
+        "accounts": 0,
+        "with_positions": 0,
+        "due": 0,
+        "behind_s": 0.0,
+    }
+    watch(rig, {f"a{i:02}.testnet": account(2_000, 1_000) for i in range(40)})
+    for _ in range(30):
+        rig.keeper.tick_liquidations()
+        clock.t += 1.0
+    w = rig.keeper.status.to_json()["watch"]
+    assert w["accounts"] == 40 and w["with_positions"] == 40
+    # 40 accounts at two reads every three seconds is a 60 s round against a 15 s target.
+    assert 30 < w["behind_s"] < 60
+
+
+def test_a_liquidated_account_is_read_again_at_once_and_dropped_when_it_is_gone() -> None:
+    rig, clock, reads = scanning_rig(per_read=0.1)
+    watch(rig, {"sick.testnet": account(1_000, 1_000)})
+    rig.keeper.tick_liquidations()
+    assert rig.keeper.status.liquidations == 1
+    del rig.chain.accounts["sick.testnet"]  # closed out and removed on chain
+    clock.t += 1.0
+    rig.keeper.tick_liquidations()
+    assert reads == ["sick.testnet", "sick.testnet"]
+    assert rig.store.takers() == [] and rig.keeper.status.watch["accounts"] == 0

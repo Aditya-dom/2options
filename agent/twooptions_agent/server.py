@@ -24,7 +24,8 @@ With TWOOPTIONS_STATIC_DIR set, any other path is served from that directory: th
 so one container (Dockerfile at the repo root) serves the trade desk, the API and the keeper.
 
 Standard library only: one thread per request, which is plenty for an RFQ desk and keeps the
-image that runs inside the TEE small.
+image that runs inside the TEE small. The server is public, so it is bounded: a limit on open
+connections, a timeout on idle ones, and a rate limit on signing per client.
 """
 
 from __future__ import annotations
@@ -68,13 +69,17 @@ API_PATHS = frozenset(
         "/quote",
     }
 )
+#: Connections served at once; one more is closed at once instead of costing a thread.
+MAX_CONNECTIONS = 256
+#: Seconds a connection may sit without sending its request or taking its answer.
+IDLE_TIMEOUT_S = 15.0
 
 
 class RateLimiter:
     """Token bucket per client. Signing is cheap; this only stops one client hogging threads."""
 
-    def __init__(self, per_second: float = 5.0, burst: float = 20.0):
-        self.rate, self.burst = per_second, burst
+    def __init__(self, per_second: float = 5.0, burst: float = 20.0, max_clients: int = 10_000):
+        self.rate, self.burst, self.max_clients = per_second, burst, max_clients
         self._state: dict[str, tuple[float, float]] = {}
         self._lock = threading.Lock()
 
@@ -85,9 +90,66 @@ class RateLimiter:
             tokens = min(self.burst, tokens + (t - last) * self.rate)
             ok = tokens >= 1.0
             self._state[client] = (tokens - 1.0 if ok else tokens, t)
-            if len(self._state) > 10_000:
-                self._state.clear()
+            if len(self._state) > self.max_clients:
+                self._forget(t)
             return ok
+
+    def _forget(self, t: float) -> None:
+        """Make room. A client idle long enough to have a full bucket again loses nothing by
+        being forgotten; only if that is not enough do the least recent of the rest go, and
+        never the busy ones wholesale, which would hand every client a fresh burst."""
+        full_after = self.burst / self.rate
+        self._state = {c: v for c, v in self._state.items() if t - v[1] < full_after}
+        if len(self._state) > self.max_clients:
+            newest = sorted(self._state.items(), key=lambda kv: kv[1][1])[-self.max_clients // 2 :]
+            self._state = dict(newest)
+
+
+def client_ip(peer: str, forwarded_for: str | None, proxies: frozenset[str]) -> str:
+    """Whom to count a request against. Behind a reverse proxy every connection comes from the
+    proxy, so all clients would share one allowance. X-Forwarded-For is believed only when the
+    connection comes from a proxy the operator named, and then only its last entry that is not
+    such a proxy: earlier entries are whatever the client chose to send."""
+    if peer not in proxies or not forwarded_for:
+        return peer
+    for hop in reversed(forwarded_for.split(",")):
+        hop = hop.strip()[:64]
+        if hop and hop not in proxies:
+            return hop
+    return peer
+
+
+class Server(ThreadingHTTPServer):
+    """One thread per connection, up to `max_connections`. Past that a new connection is closed
+    at once: an open port must not be a way to make the process start threads without limit."""
+
+    daemon_threads = True
+    request_queue_size = 128
+
+    def __init__(
+        self,
+        address: tuple[str, int],
+        handler: type[BaseHTTPRequestHandler],
+        max_connections: int = MAX_CONNECTIONS,
+    ):
+        super().__init__(address, handler)
+        self._slots = threading.BoundedSemaphore(max_connections)
+
+    def process_request(self, request: Any, client_address: Any) -> None:
+        if not self._slots.acquire(blocking=False):
+            self.shutdown_request(request)
+            return
+        try:
+            super().process_request(request, client_address)
+        except BaseException:
+            self._slots.release()
+            raise
+
+    def process_request_thread(self, request: Any, client_address: Any) -> None:
+        try:
+            super().process_request_thread(request, client_address)
+        finally:
+            self._slots.release()
 
 
 @dataclass
@@ -100,6 +162,7 @@ class App:
     hedger: Hedger | None = None
     cors: list[str] = field(default_factory=list)
     limiter: RateLimiter = field(default_factory=RateLimiter)
+    proxies: frozenset[str] = frozenset()
     code_hash: str = ""
     tee_quote_url: str = ""
     #: TDX quote bound to the agent key (tee.attest), when running in a dstack VM.
@@ -174,6 +237,8 @@ class App:
             if self.cache.view("get_account", {"account_id": taker}) is None:
                 raise QuoteError(409, "deposit first")
             self.store.add_taker(taker)
+        if self.keeper is not None:
+            self.keeper.touch(taker)  # a trade may follow: watch it closely for a while
         return signed.to_json()
 
     def _inventory(self) -> inventory.Inventory:
@@ -235,6 +300,7 @@ def _int_param(q: dict[str, str], name: str, default: int, lo: int, hi: int) -> 
 def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
         server_version = "twooptions-agent"
+        timeout = IDLE_TIMEOUT_S  # a client that connects and says nothing is dropped
 
         def _send(self, status: int, body: Any) -> None:
             data = json.dumps(body, separators=(",", ":")).encode()
@@ -275,7 +341,10 @@ def make_handler(app: App) -> type[BaseHTTPRequestHandler]:
                     self._send_file(f)
                     return
             query = {k: v[0] for k, v in parse_qs(url.query).items()}
-            status, body = app.handle(path, query, self.client_address[0])
+            client = client_ip(
+                self.client_address[0], self.headers.get("X-Forwarded-For"), app.proxies
+            )
+            status, body = app.handle(path, query, client)
             self._send(status, body)
 
         def do_OPTIONS(self) -> None:  # noqa: N802 - http.server API
@@ -314,6 +383,7 @@ def build_app(with_keeper: bool, with_hedger: bool = True) -> App:
         keeper=keeper,
         hedger=hedger,
         cors=config.cors_origins(),
+        proxies=config.trusted_proxies(),
         code_hash=os.environ.get("TWOOPTIONS_CODE_HASH", "").strip(),
         tee_quote_url=os.environ.get("TWOOPTIONS_TEE_QUOTE_URL", "").strip(),
         tee=tee.attest(near.public_key_bytes(key)),
@@ -390,7 +460,7 @@ def main(argv: list[str] | None = None) -> int:
         )
     for t in threads:
         t.start()
-    httpd = ThreadingHTTPServer((a.host, a.port), make_handler(app))
+    httpd = Server((a.host, a.port), make_handler(app))
     hedging = (
         f"on {app.hedger.venue.name} {app.hedger.venue.network} as {app.hedger.venue.account}"
         if app.hedger
