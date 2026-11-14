@@ -65,6 +65,10 @@ export class ChainBackend implements Backend {
   async getSpot(u: Underlying) { return parseSpot(await this.view<[string, string] | null>('get_spot', { underlying: u })); }
   async getVault() { return parseVault(await this.view<VaultViewJson>('get_vault')); }
   isPaused() { return this.view<boolean>('is_paused'); }
+  async getSolvency() {
+    const j = await this.view<{ ledger_total: string; net_inflow: string }>('get_solvency');
+    return { ledgerTotal: BigInt(j.ledger_total), netInflow: BigInt(j.net_inflow) };
+  }
 
   async getAccount(accountId: string) {
     const j = await this.view<AccountViewJson | null>('get_account', { account_id: accountId });
