@@ -58,6 +58,8 @@ export async function initWallet(): Promise<void> {
     ]);
     selector = await setupWalletSelector({
       network: config.network,
+      // The wallets' own reads and broadcasts fail over across the same endpoints as the app's.
+      fallbackRpcUrls: [...config.rpcUrls],
       modules: [setupMeteorWallet(), setupHotWallet(), setupMyNearWallet()],
       createAccessKeyFor: { contractId: config.contractId, methodNames: ACCESS_KEY_METHODS },
     });

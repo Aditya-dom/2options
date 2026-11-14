@@ -71,7 +71,7 @@ def network() -> Network:
         raise ConfigError(f"NEAR_NETWORK must be one of {sorted(rpc.DEFAULT_RPC)}")
     return Network(
         net,
-        os.environ.get("NEAR_RPC_URL", "").strip() or rpc.DEFAULT_RPC[net],
+        rpc.with_defaults(os.environ.get("NEAR_RPC_URL", ""), net),
         _need("TWOOPTIONS_CONTRACT_ID"),
     )
 

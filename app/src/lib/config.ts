@@ -5,19 +5,13 @@
 
 export type NetworkId = 'testnet' | 'mainnet';
 
+import { rpcList } from './rpcList';
+
 const env = import.meta.env;
 const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
 const network = (str(env.VITE_NEAR_NETWORK) || 'testnet') as NetworkId;
-const DEFAULT_RPC: Record<NetworkId, string> = {
-  testnet: 'https://test.rpc.fastnear.com',
-  mainnet: 'https://free.rpc.fastnear.com',
-};
-/** Tried when the primary endpoint is unreachable or rate-limits. */
-const FALLBACK_RPC: Record<NetworkId, string> = {
-  testnet: 'https://near-testnet.drpc.org',
-  mainnet: 'https://near.drpc.org',
-};
+const rpcUrls = rpcList(str(env.VITE_NEAR_RPC_URL), network);
 const EXPLORER: Record<NetworkId, string> = {
   testnet: 'https://testnet.nearblocks.io',
   mainnet: 'https://nearblocks.io',
@@ -33,9 +27,9 @@ export const config = {
     : str(env.VITE_AGENT_URL)).replace(/\/+$/, ''),
   /** Optional `ed25519:…` key to verify quotes against; otherwise taken from the agent's /attestation. */
   agentPublicKey: str(env.VITE_AGENT_PUBLIC_KEY),
-  rpcUrl: str(env.VITE_NEAR_RPC_URL) || DEFAULT_RPC[network],
-  /** Read endpoints in order of preference: the configured one, then a second provider. */
-  rpcUrls: [...new Set([str(env.VITE_NEAR_RPC_URL) || DEFAULT_RPC[network], FALLBACK_RPC[network]])],
+  rpcUrl: rpcUrls[0],
+  /** RPC endpoints in order of preference: any configured, then the public defaults (rpcList.ts). */
+  rpcUrls,
   explorerUrl: EXPLORER[network],
 };
 
