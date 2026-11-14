@@ -70,7 +70,26 @@ def test_the_band_widens_with_gamma_so_a_short_dated_book_is_not_re_traded_on_no
     # flattened promptly.
     flat = decide(0.0, D("0.19"), D("2000"), 2_000.0, 4, CFG, 0.0)
     assert (flat.state, flat.size, flat.reduce_only) == ("trade", D("-0.1900"), True)
-    assert flat.band == pytest.approx(0.0125)
+
+
+def test_an_empty_book_closes_the_hedge_completely_even_under_the_venue_minimum() -> None:
+    """Seen live: 0.0045 ETH (8.52 USD) was left on the venue after the book closed, inside the
+    25 USD deadband and under the 10 USD minimum. The venue takes a reduce-only order that closes
+    a whole position at any size, so the hedger sends one."""
+    dust = decide(0.0, D("0.0045"), D("1893.9"), 1_900.0, 4, CFG, 0.0)
+    assert (dust.state, dust.size, dust.reduce_only) == ("trade", D("-0.0045"), True)
+    assert dust.reason == "closing the hedge: the book is flat" and dust.band == 0.0
+    short = decide(0.0, D("-0.0045"), D("1893.9"), 1_900.0, 4, CFG, 0.0)
+    assert (short.size, short.reduce_only) == (D("0.0045"), True)
+    # While options are still open (gamma is not zero) a small remainder is ordinary drift.
+    assert decide(0.0, D("0.0045"), D("1893.9"), 1_900.0, 4, CFG, 0.01).state == "balanced"
+    assert decide(0.004, D("0.0045"), D("1893.9"), 1_900.0, 4, CFG, 0.0).state == "balanced"
+    # Nothing held: nothing to do. A large remainder is still closed in capped orders.
+    assert decide(0.0, D("0"), D("1893.9"), 1_900.0, 4, CFG, 0.0).state == "balanced"
+    big = decide(0.0, D("10"), D("2000"), 2_000.0, 4, CFG, 0.0)
+    assert (big.size, big.reduce_only) == (D("-2.5000"), True)
+    # The safety checks still come first.
+    assert decide(0.0, D("0.0045"), D("2400"), 1_900.0, 4, CFG, 0.0).state == "hold"
 
 
 def test_an_order_under_the_venue_minimum_is_not_sent() -> None:
@@ -185,7 +204,9 @@ class FakeVenue:
         # What the real venue refuses.
         assert size > 0 and size == hl.floor_size(size, 4), "size is not a multiple of the lot"
         assert limit_px == hl.round_price(limit_px, 4), "price is not on the tick"
-        assert size * self.mid >= 10, "order under the venue minimum"
+        # The venue's 10 USD minimum does not apply to a reduce-only order closing the position.
+        closes_all = reduce_only and size == abs(self.position)
+        assert size * self.mid >= 10 or closes_all, "order under the venue minimum"
         assert expires_after_ms > self.clock() // 1_000_000, "order already expired"
         assert (limit_px >= self.mid) if is_buy else (limit_px <= self.mid), "would not cross"
         assert cloid is not None and len(cloid) == 34
@@ -291,6 +312,23 @@ def test_when_the_book_closes_the_hedge_is_flattened_reduce_only(rig: Rig) -> No
     last = rig.venue.orders[-1]
     assert last["is_buy"] is False and last["reduce_only"] and last["size"] == held
     assert rig.venue.position == 0 and rig.row()["target"] == 0
+
+
+def test_no_dust_is_left_when_the_last_option_closes_after_a_partial_unwind(rig: Rig) -> None:
+    rig.traders_hold("ETH-2100-C", 4)
+    rig.hedger.tick()
+    # The book shrinks to a sliver: the hedge is cut to match, leaving a few dollars of perp.
+    rig.traders_hold("ETH-2100-C", 0.01)
+    rig.advance(5)
+    rig.hedger.tick()
+    left = rig.venue.position
+    assert 0 < left * rig.venue.mid < 25
+    # Then the sliver closes too. The remainder is inside the deadband, and is closed anyway.
+    rig.traders_hold("ETH-2100-C", 0)
+    rig.advance(5)
+    rig.hedger.tick()
+    assert rig.venue.position == 0
+    assert rig.venue.orders[-1]["reduce_only"] and rig.venue.orders[-1]["size"] == left
 
 
 def test_spot_noise_does_not_re_trade_the_hedge_but_a_real_move_does(rig: Rig) -> None:
