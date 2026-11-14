@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { ChevronRight, X } from 'lucide-react';
 import type { CSSProperties, ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useTheme } from '../theme';
@@ -167,8 +167,8 @@ export function Details({ summary, children }: { summary: ReactNode; children: R
   const { t } = useTheme();
   return (
     <details className="ui-details" style={{ borderTop: `1px solid ${t.BORDER}`, marginTop: 14 }}>
-      <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 6, padding: '12px 0 2px', fontFamily: t.SANS, fontSize: 13, color: t.GRAY }}>
-        <span className="ui-details-caret" style={{ display: 'inline-block', transition: 'transform .15s', fontSize: 10 }}>▸</span>{summary}
+      <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 8, padding: '12px 0 2px', fontFamily: t.SANS, fontSize: 14, color: t.GRAY }}>
+        <ChevronRight className="ui-details-caret" size={18} strokeWidth={2.25} style={{ flexShrink: 0, transition: 'transform .15s' }} />{summary}
       </summary>
       <div style={{ paddingTop: 8 }}>{children}</div>
     </details>
