@@ -6,8 +6,9 @@ Nothing here is billed when it stays inside the Always Free limits.
 
 | Piece | Where |
 |---|---|
-| App | https://2options.vercel.app (Vercel Hobby) |
-| Agent API | https://130-210-102-123.sslip.io (`sslip.io` maps the name to the VM's IP, so Caddy gets a free certificate without a domain) |
+| App | https://2options.xyz (Vercel Hobby; also `www.` and https://2options.vercel.app) |
+| Agent API | https://api.2options.xyz (an `A` record to the VM; Caddy gets its certificate automatically). `130-210-102-123.sslip.io` also still works |
+| DNS | GoDaddy: `A @` 216.198.79.1 and 64.29.17.1, `CNAME www` to the project's `vercel-dns-017.com` name (what `vercel domains verify` asks for), `A api` the VM's IP |
 | VM | `VM.Standard.E2.1.Micro`, Ubuntu 24.04, home region `ap-mumbai-1`, 47 GB boot volume, ephemeral public IP |
 
 ## Staying free

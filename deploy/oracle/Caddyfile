@@ -1,4 +1,4 @@
-130-210-102-123.sslip.io {
+api.2options.xyz, 130-210-102-123.sslip.io {
 	encode gzip
 	reverse_proxy 172.30.0.3:8787
 }
