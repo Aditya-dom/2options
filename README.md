@@ -110,26 +110,6 @@ make near-agent                     # quote server + keeper on :8787
 
 Hedging stays off until `HYPERLIQUID_PRIVATE_KEY` is set. Use one exchange account per agent: two hedgers on one account trade against each other.
 
-## Tests
-
-`make near-test` runs the unit tests of the contract, the test token, the agent and the app. Beyond ordinary cases they check:
-
-- the solvency invariant after every step of a random run, including liquidations;
-- that `list_liquidatable` names an account exactly when `liquidate` accepts it;
-- byte-for-byte parity of signed messages between the contract, the agent and the app;
-- that the agent's and the app's margin code match the contract on a generated fixture, and that the agent's NEAR transaction encoder matches `@near-js/transactions`.
-
-CI (`.github/workflows/near.yml`) runs the same, plus clippy, the wasm build and a check that the parity fixtures match the contract.
-
-Scripts in `agent/scripts/` exercise a live deployment with real testnet transactions:
-
-```bash
-cd agent
-uv run python scripts/e2e_testnet.py <account.testnet>        # faucet, deposit, trades, rejected forgeries and replays, LP, withdraw
-uv run python scripts/liquidation_demo.py <account.testnet>   # a long that cannot pay its funding is closed by the keeper
-uv run python scripts/hedge_smoke.py --trade                  # a minimum-size round trip on Hyperliquid testnet
-```
-
 ## Documentation
 
 | | |
