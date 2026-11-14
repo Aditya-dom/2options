@@ -21,7 +21,7 @@ export default function Header({ tab }: { tab: Tab }) {
           flexShrink: 0, background: t.SURFACE, textDecoration: 'none',
         }}>
           <img src="/logo.png?v=green" alt="2Options" style={{ width: 24, height: 24, borderRadius: 3 }} />
-          <span className="header-brand" style={{ fontFamily: t.SANS, fontSize: 16, fontWeight: 600, color: t.WHITE, letterSpacing: '-0.03em' }}>2Options</span>
+          <span className="header-brand" style={{ fontFamily: t.SANS, fontSize: 17, fontWeight: 700, color: t.WHITE, letterSpacing: '-0.03em' }}>2Options</span>
         </a>
 
         <nav className="header-tabs" style={{ display: 'flex' }} aria-label="Screens">

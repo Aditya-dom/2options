@@ -3,7 +3,7 @@ import { ACC_DIM, clear, GLYPHS, makeGrid, TONES, type Grid, type Pointer, type 
 
 /** Opacity of each tone (index 0 is "nothing"): six strengths of ink, then three of the accent. */
 const ALPHA = [0, 0.1, 0.19, 0.32, 0.52, 0.74, 0.96, 0.42, 0.74, 1];
-const FONT = '"JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace';
+const FONT = '"Geist Mono", ui-monospace, "SFMono-Regular", Menlo, monospace';
 const FRAME_MS = 1000 / 30;
 /** The moment shown when the visitor has asked for reduced motion. */
 const STILL_AT = 7.5;
@@ -131,7 +131,7 @@ export default function AsciiCanvas({ scene, ink, accent, dark = false, fontPx =
 
     layout();
     // The grid is measured from the font, so measure again once the web font has arrived.
-    void document.fonts?.load(`500 ${fontPx}px "JetBrains Mono"`).then(layout, () => undefined);
+    void document.fonts?.load(`500 ${fontPx}px "Geist Mono"`).then(layout, () => undefined);
     const resize = new ResizeObserver(layout);
     resize.observe(host);
 

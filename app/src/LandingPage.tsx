@@ -16,8 +16,8 @@ const ACCENTS = {
   light: { text:'#117a45', fill:'#78f0a0', ink:'#172325', art:'47,179,106' },
   dark:  { text:'#78f0a0', fill:'#78f0a0', ink:'#172325', art:'120,240,160' },
 };
-const DISPLAY = "'Geist', system-ui, sans-serif";
-const BODY = "'Geist', system-ui, sans-serif";
+const DISPLAY = "'Satoshi', system-ui, sans-serif";
+const BODY = "'Satoshi', system-ui, sans-serif";
 const MONO = "'Geist Mono', ui-monospace, monospace";
 
 /* ── Theme definitions ── */
@@ -108,7 +108,7 @@ export default function LandingPage() {
         <nav style={{ display:'flex', alignItems:'center', padding:'0 32px', height:58, borderBottom:`1px solid ${t.border}`, transition:'border-color 0.4s' }}>
           <a href="#/" style={{ display:'flex', alignItems:'center', gap:10, textDecoration:'none' }}>
             <img src="/logo.png?v=green" alt="2Options" style={{ width:24, height:24, borderRadius:3 }}/>
-            <span style={{ fontFamily:DISPLAY, fontSize:17, fontWeight:600, letterSpacing:'-0.03em', color:t.text, transition:'color 0.4s' }}>2Options</span>
+            <span style={{ fontFamily:DISPLAY, fontSize:18, fontWeight:700, letterSpacing:'-0.03em', color:t.text, transition:'color 0.4s' }}>2Options</span>
           </a>
           <div style={{ flex:1 }}/>
           <div className="lp-nav" style={{ display:'flex', alignItems:'center', gap:4 }}>
@@ -236,7 +236,7 @@ export default function LandingPage() {
         <footer style={{ borderTop:`1px solid ${t.border}`, padding:'28px 32px', textAlign:'center', transition:'border-color 0.4s' }}>
           <a href="#/" style={{ display:'inline-flex', alignItems:'center', gap:8, textDecoration:'none', marginBottom:14 }}>
             <img src="/logo.png?v=green" alt="" style={{ width:16, height:16, opacity:0.5 }}/>
-            <span style={{ fontFamily:DISPLAY, fontSize:13, fontWeight:600, color:t.ghost, letterSpacing:'-0.02em', transition:'color 0.4s' }}>2Options</span>
+            <span style={{ fontFamily:DISPLAY, fontSize:13, fontWeight:700, color:t.ghost, letterSpacing:'-0.02em', transition:'color 0.4s' }}>2Options</span>
           </a>
           <p style={{ fontFamily:MONO, fontSize:9, color:t.footerDim, marginTop:14, opacity:0.6, transition:'color 0.4s' }}>&copy; {new Date().getFullYear()} 2Options Protocol</p>
         </footer>
