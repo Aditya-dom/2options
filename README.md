@@ -161,10 +161,6 @@ uv run python scripts/hedge_smoke.py --trade                  # a minimum-size r
 | `app/README.md` | App modes, screens and layout |
 | `deploy/oracle/README.md` | The live deployment and how to rebuild it |
 
-## Prior work
-
-The option-pricing math and the app's visual style were adapted from the team's earlier everlasting-options prototype on another chain. Everything NEAR-specific (the contract, the agent, the testnet deployment and the app's NEAR integration) was built during the hackathon window.
-
 ## License
 
 MIT
