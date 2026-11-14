@@ -73,7 +73,7 @@ export default function App() {
   const underlying = series[0]?.underlying ?? 'ETH';
 
   return (
-    <div style={{ minHeight: '100vh', height: route === 'trade' ? '100vh' : undefined, display: 'flex', flexDirection: 'column', background: t.BG, color: t.WHITE, fontFamily: t.MONO }}>
+    <div className={route === 'trade' ? 'app-desk' : undefined} style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: t.BG, color: t.WHITE, fontFamily: t.MONO }}>
       <Header tab={route} />
       {isDemo && (
         <div style={{ ...strip(t.ORANGE, 'rgba(255,160,0,0.08)'), display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
@@ -121,9 +121,9 @@ export default function App() {
         </main>
       )}
 
-      <footer style={{ display: 'flex', justifyContent: 'space-between', padding: '5px 14px', borderTop: `1px solid ${t.LINE}`, fontFamily: t.MONO, fontSize: 10, color: t.GRAY, flexShrink: 0 }}>
+      <footer style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '2px 12px', padding: '5px 14px', borderTop: `1px solid ${t.LINE}`, fontFamily: t.MONO, fontSize: 10, color: t.GRAY, flexShrink: 0 }}>
         <span>© 2026 2Options Protocol</span>
-        <span>{isDemo ? 'Demo' : `NEAR ${config.network} · ${config.contractId}`}</span>
+        <span style={{ overflowWrap: 'anywhere' }}>{isDemo ? 'Demo' : `NEAR ${config.network} · ${config.contractId}`}</span>
       </footer>
       {funds && <FundsDialog mode={funds} onClose={() => setFunds(null)} />}
       {bridge && accountId && <CrossChainDeposit onClose={() => setBridge(false)} />}

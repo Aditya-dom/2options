@@ -1,8 +1,35 @@
 # Handoff for Gaurav
 
+## Update, Nov 14 (later): the agent and the app under load
+
+From Aditya, on branch `aditya/polish`. Nothing in the contract changes. These came from going through what broke in the earlier Pacifica build once it had real users (per-user reads in the risk loop, state that grew without limit, every client polling for itself) and looking for the same faults here.
+
+### What I need from you
+
+1. **Restart the shared agent on this code** once it is merged. No configuration change is required.
+2. **If the agent sits behind a proxy or a TEE gateway**, set `TWOOPTIONS_TRUSTED_PROXIES` to the proxy's address (`agent/.env.example`). Otherwise every user shares one rate limit of 5 quotes a second, because every request arrives from the proxy.
+3. **Keep `TWOOPTIONS_DATA_DIR` on a volume that survives a redeploy.** It holds the liquidation watch list. An account missing from it is not scanned until it asks for a quote again.
+
+### What was wrong, and what changed
+
+| Fault | Effect | Change |
+|---|---|---|
+| The liquidation scan read every watched account, one RPC call each, in one go, on the thread that posts the price | At roughly 100 accounts the scan takes longer than the 30 s the contract allows a price to age, so trading stops for everyone each time it runs | A turn of the scan reads for at most 2 s, most urgent accounts first, and resumes on the next turn. `/health` reports how far behind it is and the status page warns past 60 s |
+| One account that failed to read aborted the scan | Accounts later in the list were never checked while it kept failing | The failure is recorded, the others are read, and that account is retried on its next turn |
+| `funding.jsonl` and `hedge.jsonl` grew for ever | A long-running agent fills its disk | Rewritten with the newest half once they hold twice what is kept in memory |
+| The HTTP server started a thread per connection without limit and never timed out a silent one | Anyone could exhaust it by opening connections | 256 connections at most, 15 s idle timeout |
+| The rate limiter cleared its whole table when it filled | Filling it handed every client a fresh burst | Idle clients are forgotten first |
+| The app polled the chain from the landing page and from hidden tabs | About ten RPC calls every 5 s per open tab, against endpoints that throttle | No polling on the landing page or while the tab is hidden; parameters are read once a minute |
+| Closing a position reordered the positions table | The contract fills the closed slot with its last entry, and the table showed them as stored | Shown by strike, calls before puts |
+| On a phone the wallet button was off screen and the footer covered the order ticket | The desk could not be used at phone width | Two-row header; the page scrolls instead of being held to the window's height |
+
+**Not fixed: the scan's ceiling.** One read per account caps it at about 50 accounts with open positions at the 15 s rhythm. Lifting that needs a view that returns many accounts in one call, which needs the contract to keep an enumerable set of accounts. That is a storage change and a migration, so it is yours to decide and not for today.
+
+Tests, on top of your image and size-limit commits: agent 235 (19 new), app 118 (11 new). Each new rule was removed in turn to confirm a test fails. In a browser: a hidden tab made no requests in 12 s, the landing page made 3 (once, at load), and the local agent ran the new scan against the test deployment without errors.
+
 ## Update, Nov 14: hedging, a fix to the long side of the contract, and a status page
 
-From Aditya. This section is current; the Nov 10 note below it is history. Everything is on branch `aditya/hedge-liquidation`.
+From Aditya. Merged (#1, #2, #3). The Nov 10 note below it is history.
 
 ### What I need from you, in order
 

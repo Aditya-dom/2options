@@ -26,6 +26,8 @@ const GAS_SIMPLE = 50n * TGAS;
 const ONE_YOCTO = 1n;
 /** Per-transaction prepaid gas limit, shared across a batch's trade() actions. */
 const MAX_TX_GAS = 300n * TGAS;
+/** Parameters change only when the owner sets them, so one read serves a minute of polls. */
+const PARAMS_TTL_MS = 60_000;
 /** ~75 TGas per leg; trade() gas is not measured yet (#18), so stay conservative. */
 export const MAX_BATCH_LEGS = 4;
 
@@ -60,7 +62,14 @@ export class ChainBackend implements Backend {
     return viewCall<T>(this.rpcUrl, account, method, args);
   }
 
-  async getParams() { return parseParams(await this.view<ParamsJson>('get_params')); }
+  private params: { at: number; value: ReturnType<typeof parseParams> } | null = null;
+
+  async getParams() {
+    if (this.params && Date.now() - this.params.at < PARAMS_TTL_MS) return this.params.value;
+    const value = parseParams(await this.view<ParamsJson>('get_params'));
+    this.params = { at: Date.now(), value };
+    return value;
+  }
   async listSeries() { return (await this.view<SeriesViewJson[]>('list_series')).map(parseSeries); }
   async getSpot(u: Underlying) { return parseSpot(await this.view<[string, string] | null>('get_spot', { underlying: u })); }
   async getVault() { return parseVault(await this.view<VaultViewJson>('get_vault')); }
@@ -84,8 +93,14 @@ export class ChainBackend implements Backend {
     return big(await this.view<string>('ft_balance_of', { account_id: accountId }, this.usdcId));
   }
 
+  /** Accounts seen registered with the token. Registration is not undone, so they are not asked about again. */
+  private readonly registered = new Set<string>();
+
   async usdcRegistered(accountId: string) {
-    return (await this.view<object | null>('storage_balance_of', { account_id: accountId }, this.usdcId)) != null;
+    if (this.registered.has(accountId)) return true;
+    const yes = (await this.view<object | null>('storage_balance_of', { account_id: accountId }, this.usdcId)) != null;
+    if (yes) this.registered.add(accountId);
+    return yes;
   }
 
   isAgentKey(key: string) { return this.view<boolean>('is_agent_key', { key }); }

@@ -233,6 +233,8 @@ export interface HealthJson {
     last_funding_epoch: Record<string, number>;
     liquidations: number;
     liquidated?: { account: string; liquidator?: string; tx_hash: string; ts_ns: string }[];
+    /** The liquidation scan. Absent from agents older than the budgeted scan. */
+    watch?: { accounts: number; with_positions: number; due: number; behind_s: number };
     errors: Record<string, string>;
   } | null;
   hedger?: boolean;
@@ -248,6 +250,8 @@ export interface AgentHealth {
     /** Liquidations since the agent started, and the most recent ones. */
     liquidations: number;
     liquidated: { account: string; txHash: string; atMs: number }[];
+    /** The liquidation scan: accounts watched, how many hold positions, and how late the most overdue read of one of those is. Null when the agent does not report it. */
+    watch: { accounts: number; withPositions: number; behindS: number } | null;
     /** The last failure of each job (`spot`, `funding`, `liquidations`) that has not succeeded since. */
     errors: Record<string, string>;
   } | null;

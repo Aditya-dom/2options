@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test';
-import { parseFundingHistory, parseHedge } from './agent';
+import { parseFundingHistory, parseHealth, parseHedge } from './agent';
 import { rowSummary } from '../components/HedgePanel';
 import hedgeFixture from '../../../agent/tests/fixtures/hedge_status.json';
-import type { HedgeJson } from './types';
+import type { HealthJson, HedgeJson } from './types';
 import { mergeFundingEvents, type FundingEvent } from '../hooks/useProtocol';
 
 test('funding history rows from the agent parse into the units the panel shows', () => {
@@ -60,4 +60,12 @@ test('an agent without a hedger still reports the target, and the panel says it 
 test('a hedge on hold is shown as a warning with its reason', () => {
   const row = { ...parseHedge(hedgeFixture.enabled as HedgeJson).rows[0], state: 'hold' as const, reason: "the contract's spot is stale or missing" };
   expect(rowSummary(row)).toEqual({ text: "On hold: the contract's spot is stale or missing", tone: 'warn' });
+});
+
+test('the keeper\'s liquidation scan is read from /health when it is complete, and ignored otherwise', () => {
+  const keeper = { last_spot_post_ns: {}, last_spot_hold: {}, last_funding_epoch: {}, liquidations: 0, errors: {} };
+  const health = (watch?: object) => parseHealth({ ok: true, paused: false, series: 10, spot_age_s: {}, keeper: { ...keeper, watch } as HealthJson['keeper'] });
+  expect(health({ accounts: 12, with_positions: 7, due: 1, behind_s: 2.5 }).keeper?.watch).toEqual({ accounts: 12, withPositions: 7, behindS: 2.5 });
+  expect(health().keeper?.watch).toBeNull();   // an agent from before the scan reported itself
+  expect(health({}).keeper?.watch).toBeNull(); // one that has not filled it in
 });

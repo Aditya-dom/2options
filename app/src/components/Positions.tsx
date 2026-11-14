@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { accruedFunding, tradeCash } from '../lib/margin';
-import { seriesLabel } from '../lib/contract';
+import { orderPositions, seriesLabel } from '../lib/contract';
 import { fmtPremium, fmtSignedUsdc, fmtSize, formatUnits, SIZE_DECIMALS, SIZE_SCALE } from '../lib/units';
 import { useProtocol } from '../hooks/useProtocol';
 import { useWallet } from '../hooks/useWallet';
@@ -13,7 +13,8 @@ export default function Positions({ onClose, bare }: { onClose: (p: Pick, size: 
   const { account, series, chain } = useProtocol();
   const accountId = useWallet(s => s.accountId);
   const seriesMap = useMemo(() => new Map(series.map(s => [s.id, s])), [series]);
-  const positions = account?.positions ?? [];
+  const stored = account?.positions;
+  const positions = useMemo(() => orderPositions(stored ?? [], seriesMap), [stored, seriesMap]);
   const hasEntry = positions.some(p => p.entryIndex != null);
 
   const th = (label: string, align: 'left' | 'right' = 'right') => (

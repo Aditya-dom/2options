@@ -60,7 +60,7 @@ src/
   backend/chain.ts    RPC views + wallet transactions
   backend/demo.ts     in-browser contract + simulated market
   backend/agent.ts    HTTP agent client + local pricing agent
-  hooks/useProtocol   one polling loop all screens read from; send() for transactions
+  hooks/useProtocol   one polling loop all screens read from (off on the landing page and in a hidden tab); send() for transactions
 ```
 
 ### Margin parity

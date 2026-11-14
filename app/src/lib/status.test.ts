@@ -27,7 +27,7 @@ const vault = (over: Partial<Vault> = {}): Vault => ({
   equity: 250_000n * USDC_UNIT, requirement: 0n, epochNetOutflow: 0n, epochStartCash: 250_000n * USDC_UNIT, ...over,
 });
 const health = (over: Partial<NonNullable<AgentHealth['keeper']>> = {}): AgentHealth => ({
-  keeper: { lastSpotPostMs: { ETH: NOW - 4_000 }, spotHold: {}, liquidations: 0, liquidated: [], errors: {}, ...over },
+  keeper: { lastSpotPostMs: { ETH: NOW - 4_000 }, spotHold: {}, liquidations: 0, liquidated: [], watch: null, errors: {}, ...over },
   hedger: true,
 });
 const hedge = (over: Partial<HedgeStatus> = {}): HedgeStatus => ({
@@ -186,6 +186,12 @@ test('keeper: running, failing jobs, a held price, no keeper, and no answer', ()
   const held = check(good({ health: health({ spotHold: { ETH: 'venues disagree by 80 bps' } }) }), 'keeper');
   expect([held.level, held.summary]).toEqual(['warn', 'Holding back the ETH price instead of posting it: venues disagree by 80 bps']);
   expect(check(good({ health: { keeper: null, hedger: false } }), 'keeper').level).toBe('warn');
+  // The liquidation scan: reported when the agent sends it, and a warning once it falls behind.
+  const watching = (behindS: number) => check(good({ health: health({ watch: { accounts: 240, withPositions: 180, behindS } }) }), 'keeper');
+  expect(watching(3).summary).toBe('Running: last price sent 4 s ago; 0 liquidations since it started; watching 240 accounts.');
+  expect(watching(60).level).toBe('ok');
+  expect(watching(95)).toMatchObject({ level: 'warn', summary: expect.stringContaining('95 s behind: 180 accounts hold positions') });
+  expect(check(good({ health: health({ watch: { accounts: 1, withPositions: 0, behindS: 0 } }) }), 'keeper').summary).toContain('watching 1 account.');
   expect(check(good({ health: null }), 'keeper').level).toBe('unknown');
   // A keeper that is down is not itself an outage: the price-feed check is what says trading stopped.
   expect(buildStatus(good({ health: health({ errors: { spot: 'boom' } }) }), NOW).overall).toBe('degraded');

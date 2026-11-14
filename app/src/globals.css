@@ -41,9 +41,27 @@ button:focus-visible, input:focus-visible {
   .trade-grid { grid-template-columns: minmax(0, 1fr); }
 }
 
+/* On a phone the header is two rows: brand, status and wallet on top, the screens below. In one
+   row the wallet button sat off screen to the right, reachable only by scrolling the header. */
 @media (max-width: 639px) {
   .header-brand, .header-account { display: none; }
+  .header-bar { flex-wrap: wrap; height: auto !important; overflow-x: visible !important; }
+  .header-bar > * { height: 40px; }
+  .header-bar > div { padding-left: 8px !important; padding-right: 8px !important; }
+  .header-tabs { order: 1; flex: 0 0 100%; overflow-x: auto; border-top: 1px solid var(--line, #000); scrollbar-width: none; }
+  .header-tabs::-webkit-scrollbar { display: none; }
+  .header-tabs > a { flex: 1 0 auto; justify-content: center; }
 }
+/* The network is also named in the footer; on a phone the badge would push the wallet button onto a row of its own. */
+@media (max-width: 439px) {
+  .header-net { display: none !important; }
+}
+
+/* The trade screen fills the window exactly, its panels scrolling inside it. On a narrow screen
+   the panels stack and the page scrolls instead, so it must not be held to the window's height
+   (the footer then sat on top of the order ticket). */
+.app-desk { height: 100vh; }
+@media (max-width: 1023px) { .app-desk { height: auto; } }
 
 /* The trade desk: chain and activity on the left, chart and order panel on the right.
    Sizes come from the draggable splitters (CSS variables set in App.tsx). */

@@ -54,6 +54,8 @@ export interface StatusInput {
 /** What the checks that depend on contract reads say when the contract cannot be read at all. */
 const BLIND = 'Unknown while the contract cannot be read.';
 
+/** The keeper reads an account with open positions every 15 s; this far behind, it has more of them than it can keep up with. */
+const SCAN_LATE_S = 60;
 /** The keeper settles one series per pass, a few seconds each, starting 15 s into the interval. */
 const FUNDING_GRACE_MS = 5 * 60_000;
 const HEDGE_STALE_MS = 60_000;
@@ -187,10 +189,14 @@ function keeper(i: StatusInput, nowMs: number): Check {
   if (failing) return { ...base, level: 'warn', summary: `The ${failing[0]} job is failing: ${failing[1]}` };
   const held = Object.entries(k.spotHold)[0];
   if (held) return { ...base, level: 'warn', summary: `Holding back the ${held[0]} price instead of posting it: ${held[1]}` };
+  if (k.watch && k.watch.behindS > SCAN_LATE_S) {
+    return { ...base, level: 'warn', summary: `The liquidation scan is ${Math.round(k.watch.behindS)} s behind: ${k.watch.withPositions} accounts hold positions, more than it reads in time. An account that falls below its margin is closed later than it should be.` };
+  }
   const last = Math.max(0, ...Object.values(k.lastSpotPostMs));
   const posted = last > 0 ? `last price sent ${secs(nowMs - last)} ago` : 'no price sent yet';
   const liq = k.liquidations === 1 ? '1 liquidation' : `${k.liquidations} liquidations`;
-  return { ...base, level: 'ok', summary: `Running: ${posted}; ${liq} since it started.` };
+  const watching = k.watch ? `; watching ${k.watch.accounts === 1 ? '1 account' : `${k.watch.accounts} accounts`}` : '';
+  return { ...base, level: 'ok', summary: `Running: ${posted}; ${liq} since it started${watching}.` };
 }
 
 function hedger(i: StatusInput, nowMs: number): Check {
