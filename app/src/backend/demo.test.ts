@@ -47,3 +47,12 @@ test('faucet pays 2,000 USDC once per day, like the test token', () => {
   expect(() => w.apply('newcomer.testnet', { kind: 'faucet' })).toThrow(/faucet already claimed; try again in 2[34]h \d+m/);
   expect(w.wallet('newcomer.testnet') - before).toBe(2_000n * USDC_UNIT);
 });
+
+test('the demo contract refuses a buy on credit, like the real one', async () => {
+  const w = world();
+  w.apply(DEMO_ACCOUNT, { kind: 'deposit', amount: 1n * USDC_UNIT });
+  const big = await quote(w, 'ETH-3500-C', 'Buy', 100n * SIZE_SCALE);
+  expect(() => w.apply(DEMO_ACCOUNT, { kind: 'trade', ...big })).toThrow('not enough cash to pay the premium');
+  const after = w.accountView(DEMO_ACCOUNT)!;
+  expect([after.collateral, after.positions.length]).toEqual([1n * USDC_UNIT, 0]);
+});

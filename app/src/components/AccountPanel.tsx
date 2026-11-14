@@ -7,7 +7,7 @@ import { useWallet } from '../hooks/useWallet';
 import { useTheme } from '../theme';
 import FaucetButton from './FaucetButton';
 import type { FundsMode } from './FundsDialog';
-import { Badge, Button, Panel, Row, Stat } from './ui';
+import { Badge, Button, Note, Panel, Row, Stat } from './ui';
 
 const TIER_LABEL: Record<HealthTier, string> = {
   healthy: 'HEALTHY', warning: 'BELOW INITIAL', 'close-only': 'CLOSE ONLY', liquidatable: 'LIQUIDATABLE',
@@ -37,6 +37,9 @@ export default function AccountPanel({ onFunds, onBridge, bare }: { onFunds: (m:
   const owed = account ? pendingFunding(account, seriesMap) : null;
   const free = account && params ? maxWithdraw(account, seriesMap, params) : 0n;
   const stale = account != null && account.positions.length > 0 && account.equity == null;
+  // The contract's second liquidation test: equity below zero once unsettled funding is charged.
+  // It is how a long (which has no margin ratio) gets closed when its cash cannot pay funding.
+  const underwater = account != null && account.positions.length > 0 && account.equity != null && owed != null && account.equity - owed < 0n;
 
   // Bar spans 1.0×–3.0×; ticks at the contract's liquidation / close-only / initial ratios.
   const pos = (bps: bigint) => Math.max(0, Math.min(100, ((Number(bps) / 10_000 - 1) / 2) * 100));
@@ -54,6 +57,11 @@ export default function AccountPanel({ onFunds, onBridge, bare }: { onFunds: (m:
           {[params.liquidation_ratio_bps, params.close_only_ratio_bps, params.initial_ratio_bps].map(b => (
             <div key={b.toString()} title={`${Number(b) / 10_000}×`} style={{ position: 'absolute', left: `${pos(b)}%`, top: -3, bottom: -3, width: 1, background: t.WHITE, opacity: 0.6 }} />
           ))}
+        </div>
+      )}
+      {underwater && (
+        <div style={{ marginBottom: 8 }}>
+          <Note tone="error">Funding owed is more than this account can pay. Anyone can now close its positions at the mark. Deposit USDC to keep them.</Note>
         </div>
       )}
       {stale && <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.ORANGE, marginBottom: 8 }}>Spot is stale; equity will show once the agent posts a fresh price.</div>}

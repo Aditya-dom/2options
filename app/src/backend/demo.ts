@@ -425,6 +425,7 @@ export class DemoWorld {
       this.s.epochStartCash = this.s.vaultCash;
     }
     acct.collateral += traderCash;
+    if (q.side === 'Buy') require_(acct.collateral >= 0n, 'not enough cash to pay the premium');
     this.s.vaultCash -= traderCash;
     require_(this.s.vaultCash >= 0n, 'vault cannot fund this trade');
     this.s.epochNetOut = (this.s.epochNetOut ?? 0n) + traderCash;

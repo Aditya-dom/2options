@@ -71,3 +71,34 @@ test('pending funding is settled before the margin check', () => {
   const p = previewTrade({ account: acct, series: funded, spots, params, trade: { series: call3500.id, side: 'Buy', size: SIZE_SCALE, price: 12n * USDC_UNIT } })!;
   expect(p.pendingFunding).toBe(1_000_000n);
 });
+
+test('a buy must be paid in full from cash, after the funding the contract settles first', () => {
+  const buy = (contracts: bigint) => ({ series: call3500.id, side: 'Buy' as const, size: contracts * SIZE_SCALE, price: 12n * USDC_UNIT });
+  // 1 USDC cannot pay 1,200 of premium, although a long has no margin requirement.
+  const credit = previewTrade({ account: account(1n), series, spots, params, trade: buy(100n) })!;
+  expect(credit.reqAfter).toBe(0n);
+  expect(credit.failure).toBe('not enough cash to pay the premium');
+  expect(previewTrade({ account: account(12n), series, spots, params, trade: buy(1n) })!.failure).toBeNull();
+
+  // Holding one call entered at index 0 with the index now at 0.50: 0.50 USDC is settled first,
+  // so 12.25 in cash is no longer enough for a 12.00 premium.
+  const settled = new Map([[call3500.id, { ...call3500, fundingIndex: 500_000n }]]);
+  const holder: AccountState = {
+    collateral: 12_250_000n, lastNonce: 0n, equity: null, requirement: null,
+    positions: [{ series: call3500.id, size: SIZE_SCALE, mark: 12n * USDC_UNIT, value: 0n, entryIndex: 0n }],
+  };
+  const p = previewTrade({ account: holder, series: settled, spots, params, trade: buy(1n) })!;
+  expect(p.pendingFunding).toBe(500_000n);
+  expect(p.failure).toBe('not enough cash to pay the premium');
+});
+
+test('a batch stops at the first buy the account cannot pay for', () => {
+  const call3550: Series = { ...call3500, id: 'ETH-3550-C', strike: 3_550n * SPOT_SCALE, lastMark: 1n * USDC_UNIT };
+  const both = new Map([[call3500.id, call3500], [call3550.id, call3550]]);
+  const legs = [
+    { series: call3550.id, side: 'Buy' as const, size: SIZE_SCALE, price: 1n * USDC_UNIT },
+    { series: call3500.id, side: 'Buy' as const, size: SIZE_SCALE, price: 12n * USDC_UNIT },
+  ];
+  const p = previewBatch({ account: account(12n), series: both, spots, params }, legs)!;
+  expect([p.failure, p.failedLeg]).toEqual(['not enough cash to pay the premium', 1]);
+});

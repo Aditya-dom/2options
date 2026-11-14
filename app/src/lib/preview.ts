@@ -85,6 +85,8 @@ export function previewBatch(ctx: PreviewCtx, legs: TradeLeg[]): BatchPreview | 
     const cash = tradeCash(leg.side, leg.price, leg.size);
     cashTotal += leg.side === 'Buy' ? cash : -cash;
     collateral += leg.side === 'Buy' ? -cash : cash;
+    // A buy is paid in full from cash (after the funding the contract settles first).
+    if (leg.side === 'Buy' && collateral < 0n) { failure = 'not enough cash to pay the premium'; failedLeg = i; return; }
     const next = positions.map(p => ({ ...p }));
     const j = next.findIndex(p => p.series === leg.series);
     const delta = leg.side === 'Buy' ? leg.size : -leg.size;
