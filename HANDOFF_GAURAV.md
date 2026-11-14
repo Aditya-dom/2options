@@ -1,5 +1,99 @@
 # Handoff for Gaurav
 
+## Update, Nov 14: hedging, a fix to the long side of the contract, and a status page
+
+From Aditya. This section is current; the Nov 10 note below it is history. Everything is on branch `aditya/hedge-liquidation`.
+
+### What I need from you, in order
+
+1. **Review and merge the branch.** The contract change is small (three edits in `lib.rs`, below) but it is yours to approve.
+2. **Upgrade `contract.twooptions.testnet`.** Code only: no storage, parameter or `margin.rs` change, so no migration, and the parity fixtures are untouched.
+   ```bash
+   git pull && make near-wasm
+   cd agent && uv run python -m twooptions_agent.admin upgrade      # no --migrate
+   ```
+3. **Restart the agent** (`make near-agent`). The keeper's liquidation scan changed and must match the contract.
+4. **Optional, for the demo: turn on hedging.** Put a Hyperliquid testnet key in `agent/.env` (`HYPERLIQUID_PRIVATE_KEY`, see `agent/.env.example`) and restart. Check it first with `uv run python scripts/hedge_smoke.py --trade`.
+5. **Decide two things** marked "Your call" below: the liquidation fee base and the quoter's spread floor.
+
+Until step 2 is done the shared deployment still has the hole described next. The README says so.
+
+### Why the contract changed
+
+A long could be opened on credit and could never be liquidated. A long has a margin requirement of zero; `trade` only checked margin when the requirement rose; `liquidate` required a requirement above zero. So nothing ever checked that a buyer could pay the premium, and nothing ever collected funding from a long whose cash had run out. Gains on such a position are paid in real USDC.
+
+Shown on chain against the Nov 13 code, on a second deployment so yours was not touched: an account holding 1 USDC bought 100 USDC of calls ([tx](https://testnet.nearblocks.io/txns/GgeZAz52cC5sMMi6WLFwWQ5dZvbqyFysEcJQavp3fNA9)), ending with a collateral of -99 and a requirement of 0. The ledger invariant still balanced, because the negative collateral offsets the premium credited to the vault, so `get_solvency` did not show it.
+
+### What changed in `lib.rs`
+
+| Where | Change |
+|---|---|
+| `trade` | A buy must leave the taker's cash at or above zero: `not enough cash to pay the premium`. Checked after funding is settled, so funding owed counts. |
+| `liquidate` | An account is liquidatable when its equity is under 1.15 times its requirement **or its equity is negative** after the funding it owes. The second test is what reaches a long. |
+| `liquidate` | Fees are charged on the spot notional of each short leg and on the **mark value of each long leg**. |
+
+**Your call: the fee base.** With fees on spot notional, the 1% (reward plus insurance) is more than an out-of-the-money option is worth, so a long one cent short on funding would lose its entire position to the keeper, which is our own account. On mark value, the trader keeps about 99% of what the position is worth less the funding owed. This also lowers the fee on the long leg of a liquidated spread. Say if you want it otherwise; it is one line.
+
+**Known gap, documented in both READMEs.** A long has no funding buffer: it becomes liquidatable only at negative equity, when the remaining time value (about a day of funding) is the cushion. A keeper that is away longer leaves a shortfall for insurance and then the vault. Closing it means a funding reserve in the long's requirement, which changes `margin.rs`, both ports and the fixtures. Not done.
+
+The upgrade was rehearsed on the second deployment with the same two wasm builds: state was identical before and after (params, series, vault, accounts), the deployed code is byte-identical to a fresh build of this branch, and 33 seconds after the upgrade the keeper closed the credit-bought position ([tx](https://testnet.nearblocks.io/txns/BsWib2NATibbzgd1pipuB8CyuaWdWCFK18pD9ayxRhTk)).
+
+### Liquidation on testnet, not staged
+
+`agent/scripts/liquidation_demo.py <account.testnet>` deposits a few USDC, is refused a buy it cannot pay for, spends its cash on an out-of-the-money call and waits. At the next funding settlement the keeper closes the position, and the script checks the account's balance against the transaction's own events to the micro: cash - funding + value at the mark - fees ([tx](https://testnet.nearblocks.io/txns/DiCnvhsvznKcmtQvDyfWEXFfmjZJcZiqpMTjJjYDs9Eq), 10 of 10 checks). No parameter is touched and no price has to move. On your deployment the wait is up to an hour, so start it a few minutes before the top of the hour when recording.
+
+I did not build the "owner tightens the liquidation ratio" demo. `validate_params` has no upper bound on `liquidation_ratio_bps`, so it would show the owner force-closing a healthy account, which the README says the owner cannot do. Worth adding an upper bound some time.
+
+Keeper change (`keeper.py`): `get_account` reports equity before funding that is owed but not yet charged, so the scan now subtracts it (`pending_funding`) and applies the contract's test. `/health` lists recent liquidations with their transaction hashes.
+
+### Hedging on Hyperliquid (#38)
+
+New: `agent/twooptions_agent/hedger.py`, `hyperliquid.py`, `keccak.py`; `GET /hedge`; a DELTA HEDGE panel on the Vault page. Off until a key is configured. `agent/README.md`, "Hedging", is the reference.
+
+- **It ran live.** Two calls bought on NEAR testnet; 0.8286 ETH of perp bought on Hyperliquid testnet about 15 seconds later; flattened with a reduce-only order when the calls were sold back.
+- **No new dependency.** Hyperliquid signs orders with secp256k1 over an EIP-712 digest of a Keccak-256 hash of msgpack. None of that is in the standard library, so the subset an order needs is written out and checked byte for byte against the official SDK on 48 signing vectors. The SDK is only used to generate those vectors.
+- **It is trusted and off chain.** The hedge sits in an exchange account we hold. Its P&L is not in vault equity or the share price. The app and the README say this wherever the hedge is shown. It uses ordinary Hyperliquid API signing, not NEAR Chain Signatures, and the storyboard is corrected to match.
+- **It fails closed.** No order when the contract's spot is stale, the venue cannot be read, the venue's price is more than 500 bps from the contract's spot, or an earlier order's fate is unknown. Orders are immediate-or-cancel with an 8 second expiry, so nothing rests and a delayed request cannot fill late. The position is always read back from the venue.
+- **The no-trade band follows gamma.** With a fixed 25 USD band it made 41 fills in 21 minutes hedging three calls worth 11 USD. The band is now the larger of 25 USD and the delta drift of a 0.5% move in spot (`HEDGE_REHEDGE_MOVE_BPS`); the same test then made one order.
+- `/inventory` now uses each strike's quoted delta and reports `net_gamma`. It used the at-the-money vol for every strike, so the hedge target disagreed with `/chain`.
+
+**Your call: the spread floor.** The quoter's minimum half-spread is 0.5 bp of delta-weighted spot (`spread_delta_bps`). Hedging that delta as a taker costs several bps. A two-contract trade opened and closed within a minute earned 0.37 USD of option spread and cost about 5 USD to hedge on testnet's wide book. The floor should move towards the hedge venue's taker fee plus half its spread. I did not change pricing.
+
+### Status page
+
+`#/status` in the app (STATUS tab): one line per component with OPERATIONAL, DEGRADED, DOWN or OFF, and an overall verdict. It reads the contract and the agent's `/health` every few seconds.
+
+| Component | Down or degraded when |
+|---|---|
+| Contract, price feed, ledger, quote server, agent key | These are needed to trade; any one down is an outage. Price older than the contract's limit; `get_solvency` not balancing; agent not answering; agent key not registered |
+| Keeper | A job is failing, or it is holding a price back |
+| Funding settlement | A series is late in the interval, or has missed one |
+| LP vault | At its risk limit, near its hourly payout cap, or withdrawals halted |
+| Delta hedge | Last pass failed, silent for a minute, or on hold. OFF when not configured |
+
+The rules are one pure function (`app/src/lib/status.ts`) with a test per rule. `cd app && bun scripts/live_status.ts` prints the same verdict in a terminal and exits 1 on an outage. I checked it by stopping the agent: it reported "Outage: quote server" at once and added "price feed" when the on-chain price passed 30 seconds, then went back to operational after a restart.
+
+### What was tested
+
+| | |
+|---|---|
+| Contract | 84 unit tests. The 2,000-step random run now also asserts that no completed buy leaves negative cash and that only an account with open positions can have a negative balance |
+| Agent | 196 tests, `ruff`, `mypy --strict`. Includes a randomized run of the hedger (random book, price walk, stale spots, venue failures, timeouts, refusals, partial fills) that checks its rules on every pass |
+| App | 78 tests, type-check, build |
+| Guards | Each new check was removed in turn to confirm a test fails: 5 in the contract, about 35 in the agent, 16 in the status rules |
+| Live, second deployment | `e2e_testnet.py` 34 of 34; `liquidation_demo.py` 10 of 10; the hedge loop (open, hold through noise, flatten); `hedge_smoke.py --trade` 8 of 8; the status page in a browser, operational and in an outage |
+
+**Not verified:** the liquidation of a short on testnet (unit-tested only; it needs a price move), LP claim (one-hour cooldown), and anything at all on `contract.twooptions.testnet` since Nov 13.
+
+### Smaller things
+
+- `HOST` and `PORT` in `agent/.env` were ignored, because the defaults were read before the file was loaded. Fixed.
+- `e2e_testnet.py` has one more check (a buy on credit is refused), retries when the agent stalls on a slow RPC, and borrows a quote for the keeper account instead of the owner, which only worked when the two were the same account.
+- If the agent runs on a laptop, keep it awake: `caffeinate -i make near-agent`. Mine slept for seven minutes mid-test. The spot went stale, trading stopped and the hedger held its position, which is the intended behaviour, but nothing runs while the machine sleeps.
+- The second deployment is `contract.e2e-owner-459fc447.testnet` with `usdc.e2e-owner-459fc447.testnet`, funding every 3 minutes so settlements and liquidations can be watched. It only works while my agent is running. Its keys are not in the repo; ask me if you want them.
+
+---
+
 From Aditya, Nov 10, 2026 (final update for today). This replies to `HANDOFF_ADITYA.md`. Everything is on branch `aditya/near-frontend`, in **PR #46**. The new `near` CI workflow passes there: contract, app and agent.
 
 > **Nov 13:** this note predates the testnet deployment. Everything in §1 is done and running; see "Update, Nov 13" in `HANDOFF_ADITYA.md` and the README's **Status** table.
