@@ -292,3 +292,50 @@ def test_quotes_stop_once_the_spot_is_past_half_its_allowed_age(chain: FakeChain
     assert len(q.rows(snap, chain.now_ns)) == len(chain.series)
     with pytest.raises(QuoteError, match="stale"):
         q.quote(snap, "ETH-2100-C", Side.Buy, ONE, "alice.testnet", chain.now_ns)
+
+
+C = 1_000_000  # one contract in size units
+
+
+def limited(**kw: object) -> Quoter:
+    cfg = {"max_trade_size": C // 10, "max_position": C // 10, "max_open_interest": C // 4}
+    cfg.update(kw)
+    return quoter(**cfg)
+
+
+def test_no_limits_configured_means_no_check(chain: FakeChain) -> None:
+    snap = fetch_snapshot(chain.view, chain.now_ns)
+    quoter().check_limits(snap, "ETH-2100-C", Side.Buy, 50 * C, 0)
+
+
+def test_trade_size_and_position_limits(chain: FakeChain) -> None:
+    q, snap = limited(), fetch_snapshot(chain.view, chain.now_ns)
+    q.check_limits(snap, "ETH-2100-C", Side.Buy, C // 10, 0)  # exactly at the limit
+    with pytest.raises(QuoteError, match="0.1 contracts per trade"):
+        q.check_limits(snap, "ETH-2100-C", Side.Buy, C // 5, 0)
+    with pytest.raises(QuoteError, match="per account in ETH-2100-C"):
+        q.check_limits(snap, "ETH-2100-C", Side.Buy, C // 20, C // 10)  # 0.1 held + 0.05
+    with pytest.raises(QuoteError, match="per account"):
+        q.check_limits(snap, "ETH-2100-C", Side.Sell, C // 20, -C // 10)  # shorts count too
+
+
+def test_closing_is_always_allowed_even_above_the_limits(chain: FakeChain) -> None:
+    q, snap = limited(), fetch_snapshot(chain.view, chain.now_ns)
+    q.check_limits(
+        snap, "ETH-2100-C", Side.Sell, 12 * C, 12 * C
+    )  # a 12-contract position from before
+    q.check_limits(snap, "ETH-2100-C", Side.Buy, 3 * C, -5 * C)  # part of a short
+    # Flipping through zero opens new exposure, so the limits apply again.
+    with pytest.raises(QuoteError, match="per trade"):
+        q.check_limits(snap, "ETH-2100-C", Side.Sell, C // 5, C // 20)
+
+
+def test_open_interest_limit_per_underlying(chain: FakeChain) -> None:
+    chain.series["ETH-2100-C"]["net_trader_size"] = str(C // 10)
+    chain.series["ETH-2100-P"]["net_trader_size"] = str(-C // 10)  # |0.1| + |-0.1| = 0.2 open
+    q, snap = limited(), fetch_snapshot(chain.view, chain.now_ns)
+    q.check_limits(snap, "ETH-2200-C", Side.Buy, C // 20, 0)  # 0.25: at the limit
+    with pytest.raises(QuoteError, match="open interest in ETH"):
+        q.check_limits(snap, "ETH-2200-C", Side.Buy, C // 10, 0)  # 0.3
+    # A new short in a series where traders are net long nets it down: open interest falls.
+    q.check_limits(snap, "ETH-2100-C", Side.Sell, C // 10, 0)

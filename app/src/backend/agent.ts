@@ -4,6 +4,7 @@
  * signature, so it can only trade against the in-browser demo contract.
  */
 
+import type { TradeLimits } from '../lib/limits';
 import { priceBand } from '../lib/margin';
 import type { Params, QuoteJson, Series, SpotPoint, Underlying } from '../lib/contract';
 import { everlasting, intrinsicF } from '../lib/pricing';
@@ -65,6 +66,15 @@ export class HttpAgent implements Agent {
 
   async health(): Promise<AgentHealth> {
     return parseHealth(await this.get<HealthJson>('/health'));
+  }
+
+  async limits(): Promise<TradeLimits | null> {
+    const res = await fetch(`${this.baseUrl}/limits`, { headers: { Accept: 'application/json' } });
+    if (res.status === 404) return null; // an agent from before limits existed
+    if (!res.ok) throw new Error(`agent /limits: HTTP ${res.status}`);
+    const j = (await res.json()) as Record<'max_trade_size' | 'max_position' | 'max_open_interest', string | null>;
+    const b = (v: string | null) => (v == null ? null : big(v));
+    return { maxTradeSize: b(j.max_trade_size), maxPosition: b(j.max_position), maxOpenInterest: b(j.max_open_interest) };
   }
 
   async hedge(): Promise<HedgeStatus | null> {

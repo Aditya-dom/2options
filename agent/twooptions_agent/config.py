@@ -108,7 +108,24 @@ def quoter_config() -> QuoterConfig:
         funding_fraction=fraction,
         quote_ttl_s=_float("TWOOPTIONS_QUOTE_TTL_S", 30.0),
         atm_vol=vols,
+        max_trade_size=_contracts_limit("TWOOPTIONS_MAX_TRADE_SIZE"),
+        max_position=_contracts_limit("TWOOPTIONS_MAX_POSITION"),
+        max_open_interest=_contracts_limit("TWOOPTIONS_MAX_OPEN_INTEREST"),
     )
+
+
+def _contracts_limit(name: str) -> int | None:
+    """A size limit in contracts (e.g. `0.1`), as size units; unset or empty means no limit."""
+    v = os.environ.get(name, "").strip()
+    if not v:
+        return None
+    try:
+        units = round(float(v) * 1_000_000)
+    except ValueError as e:
+        raise ConfigError(f"{name} must be a number of contracts") from e
+    if units < 1_000:
+        raise ConfigError(f"{name} must be at least 0.001 contracts")
+    return units
 
 
 def hedge_venue(net: Network) -> hyperliquid.Hyperliquid | None:

@@ -36,7 +36,9 @@ USER agent
 ENV HOST=0.0.0.0 PORT=8787 \
     TWOOPTIONS_STATIC_DIR=/srv/static TWOOPTIONS_DATA_DIR=/data \
     NEAR_NETWORK=testnet TWOOPTIONS_CONTRACT_ID=contract.twooptions.testnet \
-    NEAR_RPC_URL=https://near-testnet.drpc.org,https://test.rpc.fastnear.com
+    NEAR_RPC_URL=https://near-testnet.drpc.org,https://test.rpc.fastnear.com \
+    TWOOPTIONS_MAX_TRADE_SIZE=0.1 TWOOPTIONS_MAX_POSITION=0.1 TWOOPTIONS_MAX_OPEN_INTEREST=0.25 \
+    HEDGE_MAX_POSITION_USD=500 HEDGE_MAX_ORDER_USD=250
 EXPOSE 8787
 VOLUME ["/data"]
 # Secrets (AGENT_PRIVATE_KEY, KEEPER_ACCOUNT_ID, KEEPER_PRIVATE_KEY) come from the environment.

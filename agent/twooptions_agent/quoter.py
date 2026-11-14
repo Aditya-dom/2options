@@ -51,6 +51,29 @@ class QuoterConfig:
     smile: float = 4.0
     #: Lift the ATM vol to realized vol when the market moves more than configured.
     use_realized_vol: bool = True
+    #: Size limits, in size units (1e6 = one contract); None means no limit. They bound how much
+    #: the vault, and the hedge that follows it, can be asked to carry. A trade that only reduces
+    #: the taker's position is always allowed, whatever its size.
+    #: Largest single trade.
+    max_trade_size: int | None = None
+    #: Largest position one account may hold in one series.
+    max_position: int | None = None
+    #: Largest open interest per underlying: the sum over its series of |net trader size|.
+    max_open_interest: int | None = None
+
+    @property
+    def has_limits(self) -> bool:
+        return any(
+            x is not None for x in (self.max_trade_size, self.max_position, self.max_open_interest)
+        )
+
+
+def _opt_str(v: int | None) -> str | None:
+    return None if v is None else str(v)
+
+
+def _contracts(units: int) -> str:
+    return f"{units / 1_000_000:g}"
 
 
 @dataclass(frozen=True)
@@ -175,6 +198,48 @@ class Quoter:
         with self._lock:
             self._nonce = max(now_ns // 1_000, self._nonce + 1)  # microseconds, never repeats
             return self._nonce
+
+    def check_limits(
+        self, snap: Snapshot, series_id: str, side: Side, size: int, held: int
+    ) -> None:
+        """Refuse a trade that would grow exposure past the configured limits. `held` is the
+        taker's current position in the series (signed size units)."""
+        c = self.cfg
+        s = snap.series.get(series_id)
+        if s is None or not c.has_limits:
+            return
+        change = size if side == Side.Buy else -size
+        new = held + change
+        if abs(new) <= abs(held) and new * held >= 0:
+            return  # only reduces the position: always allowed, so anyone can close
+        if c.max_trade_size is not None and size > c.max_trade_size:
+            raise QuoteError(
+                409,
+                f"size is above the limit of {_contracts(c.max_trade_size)} contracts per trade",
+            )
+        if c.max_position is not None and abs(new) > c.max_position:
+            raise QuoteError(
+                409,
+                f"position would exceed the limit of {_contracts(c.max_position)} contracts per account in {series_id}",
+            )
+        if c.max_open_interest is not None:
+            same = [x for x in snap.series.values() if x.underlying == s.underlying]
+            before = sum(abs(x.net_trader_size) for x in same)
+            after = before - abs(s.net_trader_size) + abs(s.net_trader_size + change)
+            if after > c.max_open_interest and after > before:
+                raise QuoteError(
+                    409,
+                    f"open interest in {s.underlying.name} would exceed the limit of "
+                    f"{_contracts(c.max_open_interest)} contracts",
+                )
+
+    def limits_json(self) -> dict[str, str | None]:
+        c = self.cfg
+        return {
+            "max_trade_size": _opt_str(c.max_trade_size),
+            "max_position": _opt_str(c.max_position),
+            "max_open_interest": _opt_str(c.max_open_interest),
+        }
 
     def quote(
         self,

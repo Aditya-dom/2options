@@ -91,13 +91,35 @@ def main() -> int:
             return str(e)
         return "(succeeded)"
 
+    limited: list[str] = []  # quotes the agent refused only for its size limits
+
     def quote(series: str, side: str, size: int, taker: str = me) -> Any:
         for _ in range(5):
             q = agent(f"/quote?series={series}&side={side}&size={size}&taker={taker}")
+            if q.get("http") == 409 and "limit" in q.get("error", ""):
+                # This deployment caps sizes in the agent (TWOOPTIONS_MAX_*), but these checks are
+                # about the contract's own rules. Sign the same quote with the agent key, at the
+                # agent's current price, so the contract still decides.
+                limited.append(q["error"])
+                return sign_locally(series, side, size, taker)
             if "quote" in q or q.get("http") not in (502, 503):
                 return q
             time.sleep(3)  # spot momentarily stale or RPC hiccup
         return q
+
+    def sign_locally(series: str, side: str, size: int, taker: str) -> Any:
+        row = {r["series"]: r for r in agent("/chain")}[series]
+        now = time.time_ns()
+        q = wire.Quote(
+            series,
+            taker,
+            wire.Side[side],
+            size,
+            int(row["ask"] if side == "Buy" else row["bid"]),
+            now // 1_000,  # the agent's nonces are a microsecond clock too
+            now + 20 * 10**9,
+        )
+        return {"quote": q.to_json(), "signature": wire.sign(config.agent_key(), contract, q)}
 
     def trade(q: Any) -> near.TxResult:
         return acct.call(
@@ -172,6 +194,15 @@ def main() -> int:
         int(account()["collateral"]) == 5_000 * USDC and wallet() == w0 - 5_000 * USDC,
         "deposit credits collateral 1:1",
     )
+    lim = agent("/limits")
+    if lim.get("max_trade_size"):
+        over = int(lim["max_trade_size"]) + 1_000
+        r = agent(f"/quote?series={call}&side=Buy&size={over}&taker={me}")
+        check(
+            r.get("http") == 409 and "per trade" in r.get("error", ""),
+            "the agent refuses a quote above its per-trade size limit",
+            r.get("error", r),
+        )
     fails(lambda: transfer_call(1, "nonsense"))
     check(
         wallet() == w0 - 5_000 * USDC,
@@ -420,6 +451,10 @@ def main() -> int:
     inv = agent("/inventory")
     check("net_delta" in inv, "agent reports vault inventory", inv.get("net_delta"))
 
+    if limited:
+        print(
+            f"      {len(limited)} quote(s) over the agent's size limits were signed locally for contract checks"
+        )
     failed = [r for r in results if not r[0]]
     print(f"\n{len(results) - len(failed)} passed, {len(failed)} failed")
     return 1 if failed else 0

@@ -1,3 +1,4 @@
+import type { TradeLimits } from '../lib/limits';
 import type { Fill } from '../lib/history';
 import type {
   AccountState, LpClaim, Params, QuoteJson, Series, Side, SpotPoint, Underlying, Vault,
@@ -264,6 +265,8 @@ export interface Agent {
   attestation(): Promise<Attestation | null>;
   /** Past settlements, newest first. Only the quote server keeps them; RPC cannot list events. */
   fundingHistory?(limit: number): Promise<FundingHistoryRow[]>;
+  /** Size limits the agent enforces on quotes. Null when it publishes none (older agent, demo). */
+  limits?(): Promise<TradeLimits | null>;
   /** The delta hedger's state. Null when the agent is too old to report it. */
   hedge?(): Promise<HedgeStatus | null>;
   /** Liveness and keeper status, for the status page. */

@@ -17,6 +17,8 @@ import { fundingPerHour, type Pick } from './OptionChain';
 import type { FundsMode } from './FundsDialog';
 import FaucetButton from './FaucetButton';
 import PayoffChart from './PayoffChart';
+import { limitError } from '../lib/limits';
+import { useTradeLimits } from '../hooks/useTradeLimits';
 import { AmountInput, Button, Empty, Note, Panel, Row } from './ui';
 
 const MIN_SIZE = 1_000n; // 0.001 contract, the contract's MIN_TRADE_SIZE
@@ -44,7 +46,10 @@ export default function TradeTicket({ pick, onPick, size, onSize, onFunds }: {
   const row = pick ? chain.get(pick.series) : undefined;
   const spot = s ? spots[s.underlying]?.price : undefined;
   const sizeUnits = parseUnits(size, 6);
-  const sizeOk = sizeUnits != null && sizeUnits >= MIN_SIZE;
+  const limits = useTradeLimits();
+  const held = account?.positions.find(p => p.series === pick?.series)?.size ?? 0n;
+  const limitMsg = pick && sizeUnits != null ? limitError(limits, pick.side, sizeUnits, held) : null;
+  const sizeOk = sizeUnits != null && sizeUnits >= MIN_SIZE && limitMsg == null;
 
   // Any change to what is being traded invalidates a firm quote.
   useEffect(() => { setQuote(null); setQuoteErr(null); }, [pick?.series, pick?.side, size, accountId]);
@@ -164,7 +169,8 @@ export default function TradeTicket({ pick, onPick, size, onSize, onFunds }: {
       <label style={{ fontFamily: t.MONO, fontSize: 10, color: t.GRAY }}>Size (contracts)</label>
       <div style={{ marginTop: 4, marginBottom: 12 }}>
         <AmountInput ariaLabel="Size in contracts" value={size} onChange={onSize} placeholder="1" />
-        {size !== '' && !sizeOk && <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.RED, marginTop: 4 }}>Minimum 0.001, up to 6 decimals.</div>}
+        {size !== '' && !sizeOk && <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.RED, marginTop: 4 }}>{limitMsg ?? 'Minimum 0.001, up to 6 decimals.'}</div>}
+        {limits?.maxTradeSize != null && sizeOk && <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.DIM, marginTop: 4 }}>Up to {Number(limits.maxTradeSize) / 1e6} contracts per trade on this deployment.</div>}
       </div>
 
       <Row label={live ? 'Firm price' : 'Indicative price'} value={price != null ? fmtPremium(price) : '—'} color={live ? sideColor : undefined} />

@@ -7,6 +7,7 @@
     GET /attestation                    the agent's public key, and a TDX quote bound to it
                                         when running in a dstack TEE (tee.py)
     GET /inventory                      vault position, net delta and hedge target
+    GET /limits                         size limits per trade, per account and series, per underlying
     GET /hedge                          the hedger: target, venue position, gap, recent orders
     GET /health                         liveness and keeper status
 
@@ -63,6 +64,7 @@ API_PATHS = frozenset(
         "/spot",
         "/inventory",
         "/hedge",
+        "/limits",
         "/quote",
     }
 )
@@ -141,6 +143,8 @@ class App:
             return 200, self._inventory().to_json()
         if path == "/hedge":
             return 200, self._hedge()
+        if path == "/limits":
+            return 200, self.quoter.limits_json()
         if path == "/quote":
             if not self.limiter.allow(client):
                 raise QuoteError(429, "too many quote requests")
@@ -155,7 +159,15 @@ class App:
             raise QuoteError(400, "side must be Buy or Sell")
         size = _int_param(q, "size", 0, 1, 10**30)
         taker = q["taker"]
-        signed = self.quoter.quote(self.cache.get(), q["series"], Side[q["side"]], size, taker)
+        side = Side[q["side"]]
+        snap = self.cache.get()
+        if self.quoter.cfg.has_limits:
+            acct = self.cache.view("get_account", {"account_id": taker})
+            if acct is None:
+                raise QuoteError(409, "deposit first")
+            held = sum(int(p["size"]) for p in acct["positions"] if p["series"] == q["series"])
+            self.quoter.check_limits(snap, q["series"], side, size, held)
+        signed = self.quoter.quote(snap, q["series"], side, size, taker)
         # The contract only trades for accounts that have deposited. Checking here keeps
         # made-up account ids out of the liquidation watch list.
         if taker not in self.store.takers():

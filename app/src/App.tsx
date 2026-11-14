@@ -21,6 +21,7 @@ import { goTo, useRoute } from './hooks/useRoute';
 import { useWallet } from './hooks/useWallet';
 import { world } from './services';
 import { useTheme } from './theme';
+import { DEFAULT_SIZE } from './lib/strategies';
 
 const SIDE_LIMITS = (): [number, number] => [280, Math.max(320, Math.floor(window.innerWidth * 0.5))];
 const CHART_LIMITS = (): [number, number] => [120, Math.max(200, Math.floor(window.innerHeight * 0.6))];
@@ -37,7 +38,7 @@ export default function App() {
   const accountId = useWallet(s => s.accountId);
   const route = useRoute();
   const [picked, setPick] = useState<Pick | null>(null);
-  const [size, setSize] = useState('1');
+  const [size, setSize] = useState(DEFAULT_SIZE);
   const [funds, setFunds] = useState<FundsMode | null>(null);
   const [bridge, setBridge] = useState(false);
 

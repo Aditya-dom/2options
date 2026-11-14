@@ -41,7 +41,10 @@ export function strikeGrid(series: Series[], u: Underlying, spot: bigint): { str
 }
 
 /** Concrete legs for a preset, or null if the grid lacks a needed strike. */
-export function buildPreset(preset: Preset, series: Series[], u: Underlying, spot: bigint, size = '1'): StrategyLeg[] | null {
+/** Default leg size: small, so it fits deployments that cap trade size (the agent's /limits). */
+export const DEFAULT_SIZE = '0.1';
+
+export function buildPreset(preset: Preset, series: Series[], u: Underlying, spot: bigint, size = DEFAULT_SIZE): StrategyLeg[] | null {
   const { strikes, atm } = strikeGrid(series, u, spot);
   const legs: StrategyLeg[] = [];
   for (const t of preset.legs) {

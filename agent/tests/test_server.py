@@ -10,7 +10,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from twooptions_agent import config, near
 from twooptions_agent.chain import ChainCache
-from twooptions_agent.quoter import Quoter
+from twooptions_agent.quoter import Quoter, QuoterConfig
 from twooptions_agent.server import App, RateLimiter, make_handler
 from twooptions_agent.store import Store
 
@@ -368,3 +368,20 @@ def test_one_container_serves_the_app_and_the_api(app: App, tmp_path: Path) -> N
             assert status == 404 and b"not served" not in body
     finally:
         httpd.shutdown()
+
+
+def test_limits_are_published_and_enforced_on_quotes(app: App, chain: FakeChain) -> None:
+    assert app.handle("/limits", {}) == (
+        200, {"max_trade_size": None, "max_position": None, "max_open_interest": None},
+    )  # fmt: skip
+    app.quoter = Quoter(KEY, CONTRACT, QuoterConfig(max_trade_size=100_000, max_position=100_000))
+    assert app.handle("/limits", {})[1]["max_trade_size"] == "100000"
+    big = {"series": "ETH-2100-C", "side": "Buy", "size": "1000000", "taker": "alice.testnet"}
+    status, body = app.handle("/quote", big, "1.1.1.1")
+    assert status == 409 and "per trade" in body["error"]
+    assert app.handle("/quote", {**big, "size": "100000"}, "1.1.1.1")[0] == 200
+    # Closing a position bigger than the limits still gets a quote.
+    chain.accounts["alice.testnet"]["positions"] = [{"series": "ETH-2100-C", "size": "5000000"}]
+    assert app.handle("/quote", {**big, "side": "Sell", "size": "5000000"}, "1.1.1.1")[0] == 200
+    status, body = app.handle("/quote", {**big, "taker": "nobody.testnet"}, "1.1.1.1")
+    assert status == 409 and body["error"] == "deposit first"

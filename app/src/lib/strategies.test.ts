@@ -17,8 +17,8 @@ test('ATM is the strike nearest to spot', () => {
 
 test('presets resolve relative strikes', () => {
   expect(buildPreset(preset('bull-call'), grid, 'ETH', spot)).toEqual([
-    { series: 'ETH-3500-C', side: 'Buy', size: '1' },
-    { series: 'ETH-3550-C', side: 'Sell', size: '1' },
+    { series: 'ETH-3500-C', side: 'Buy', size: '0.1' },
+    { series: 'ETH-3550-C', side: 'Sell', size: '0.1' },
   ]);
   expect(buildPreset(preset('short-strangle'), grid, 'ETH', spot, '2')).toEqual([
     { series: 'ETH-3550-C', side: 'Sell', size: '2' },

@@ -6,7 +6,7 @@ import { healthTier, type Side, type Underlying } from '../lib/contract';
 import { friendlyError } from '../lib/errors';
 import { executionOrder, previewBatch, type TradeLeg } from '../lib/preview';
 import { DEFAULT_VOL, everlasting } from '../lib/pricing';
-import { buildPreset, PRESETS, type StrategyLeg } from '../lib/strategies';
+import { buildPreset, DEFAULT_SIZE, PRESETS, type StrategyLeg } from '../lib/strategies';
 import { big, fmtPremium, fmtUsdc, NS_PER_MS, parseUnits, SIZE_SCALE, SPOT_SCALE, USDC_UNIT } from '../lib/units';
 import { useNow, useProtocol } from '../hooks/useProtocol';
 import { BAD_SIGNATURE, checkQuote } from '../hooks/useAgentTrust';
@@ -15,6 +15,8 @@ import { agent, backend } from '../services';
 import { useTheme } from '../theme';
 import { fundingPerHour } from './OptionChain';
 import PayoffChart from './PayoffChart';
+import { limitError } from '../lib/limits';
+import { useTradeLimits } from '../hooks/useTradeLimits';
 import Select from './Select';
 import { Button, Empty, Note, Panel, Row, Stat } from './ui';
 
@@ -25,6 +27,7 @@ interface Resolved extends StrategyLeg { idx: number; units: bigint; price: bigi
 export default function StrategyBuilder() {
   const { t } = useTheme();
   const { series, chain, spots, params, account, paused, send } = useProtocol();
+  const limits = useTradeLimits();
   const accountId = useWallet(s => s.accountId);
   const signIn = useWallet(s => s.signIn);
   const now = useNow(200);
@@ -56,8 +59,20 @@ export default function StrategyBuilder() {
   };
   const edit = (i: number, patch: Partial<StrategyLeg>) => { setLegs(ls => ls.map((l, j) => (j === i ? { ...l, ...patch } : l))); setPresetId(null); };
 
+  // The first leg the agent would refuse for size, and why.
+  const legLimitMsg = useMemo(() => {
+    for (const l of legs) {
+      const units = parseUnits(l.size, 6);
+      const held = account?.positions.find(p => p.series === l.series)?.size ?? 0n;
+      const msg = units != null ? limitError(limits, l.side, units, held) : null;
+      if (msg) return msg;
+    }
+    return null;
+  }, [legs, limits, account]);
+
   // Resolve legs against the chain; quote prices replace indicative ones once firm.
   const resolved: Resolved[] | null = useMemo(() => {
+    if (legLimitMsg) return null;
     const out: Resolved[] = [];
     for (const [idx, l] of legs.entries()) {
       const row = chain.get(l.series);
@@ -69,7 +84,7 @@ export default function StrategyBuilder() {
       });
     }
     return out;
-  }, [legs, chain]);
+  }, [legs, chain, legLimitMsg]);
 
   const ordered = useMemo(() => (resolved ? executionOrder(resolved) : null), [resolved]);
   const minExpiryMs = quotes ? Math.min(...quotes.map(q => Number(big(q.quote.expiry_ns) / NS_PER_MS))) : 0;
@@ -200,7 +215,9 @@ export default function StrategyBuilder() {
                 {legs.map((l, i) => {
                   const row = chain.get(l.series);
                   const sizeUnits = parseUnits(l.size, 6);
-                  const sizeOk = sizeUnits != null && sizeUnits >= 1_000n;
+                  const held = account?.positions.find(p => p.series === l.series)?.size ?? 0n;
+                  const limitMsg = sizeUnits != null ? limitError(limits, l.side, sizeUnits, held) : null;
+                  const sizeOk = sizeUnits != null && sizeUnits >= 1_000n && limitMsg == null;
                   const price = row ? (l.side === 'Buy' ? row.ask : row.bid) : null;
                   return (
                     <tr key={i} style={{ borderBottom: `1px solid ${t.BORDER}` }}>
@@ -238,7 +255,7 @@ export default function StrategyBuilder() {
                         })()}
                       </td>
                       <td style={{ ...cell, textAlign: 'right' }}>
-                        <input aria-label={`Size of leg ${i + 1}`} inputMode="decimal" value={l.size} onChange={e => edit(i, { size: e.target.value.replace(/[^\d.]/g, '') })}
+                        <input aria-label={`Size of leg ${i + 1}`} title={limitMsg ?? undefined} inputMode="decimal" value={l.size} onChange={e => edit(i, { size: e.target.value.replace(/[^\d.]/g, '') })}
                           style={{ width: 64, textAlign: 'right', fontFamily: t.MONO, fontSize: 11, background: t.MUTED, color: t.WHITE, border: `1px solid ${sizeOk ? t.BORDER : t.RED}`, padding: '3px 6px' }} />
                       </td>
                       <td className="tabular-nums" style={{ ...cell, textAlign: 'right', color: l.side === 'Buy' ? t.GREEN : t.RED }}>{price != null ? fmtPremium(price) : '—'}</td>
@@ -256,11 +273,12 @@ export default function StrategyBuilder() {
               </tbody>
             </table>
           </div>
-          <button onClick={() => { const s = options[Math.floor(options.length / 2)]; if (s) { setLegs(ls => [...ls, { series: s.id, side: 'Buy', size: '1' }]); setPresetId(null); } }}
+          <button onClick={() => { const s = options[Math.floor(options.length / 2)]; if (s) { setLegs(ls => [...ls, { series: s.id, side: 'Buy', size: DEFAULT_SIZE }]); setPresetId(null); } }}
             disabled={legs.length >= MAX_BATCH_LEGS}
             style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 6, fontFamily: t.MONO, fontSize: 10, color: legs.length >= MAX_BATCH_LEGS ? t.DIM : t.ACCENT, background: 'transparent', border: `1px dashed ${t.BORDER}`, padding: '6px 10px', cursor: 'pointer' }}>
             <Plus size={12} /> ADD LEG
           </button>
+          {legLimitMsg && <div style={{ fontFamily: t.MONO, fontSize: 10, color: t.RED, marginTop: 8 }}>{legLimitMsg}</div>}
         </Panel>
 
         <Panel title="P&L VS SPOT">
