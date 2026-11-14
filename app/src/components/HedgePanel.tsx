@@ -2,7 +2,7 @@ import type { HedgeOrder, HedgeRow, HedgeStatus } from '../backend/types';
 import { useNow, useProtocol } from '../hooks/useProtocol';
 import { useTheme } from '../theme';
 import { fmtUsd } from '../lib/units';
-import { Badge, Empty, Note, Panel, Row, Stat } from './ui';
+import { Badge, Details, Empty, Kpi, Line, Note, Panel } from './ui';
 
 /** A pass older than this means the hedger has stopped reporting. */
 const STALE_MS = 60_000;
@@ -55,44 +55,57 @@ export function HedgeView({ hedge, now }: { hedge: HedgeStatus | null; now: numb
       : <>Hedging is switched off on this agent, so LPs carry the vault's net delta. The target above is the perp position that would offset it.</>}>
       {hedge.rows.length === 0 ? <Empty>No open interest to hedge.</Empty> : hedge.rows.map(r => {
         const sum = rowSummary(r);
+        const tone = sum.tone === 'warn' ? t.ORANGE : t.GREEN;
         return (
-          <div key={r.underlying} style={{ marginBottom: 12 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: 14 }}>
-              <Stat label={`Target ${r.underlying}`} value={r.target != null ? signed(r.target) : '—'} sub="perp that offsets the vault" />
-              <Stat label="Hedge position" value={r.position != null ? signed(r.position) : '—'} sub={hedge.enabled ? 'held on the venue' : 'no hedger running'} />
-              <Stat label="Unhedged" value={r.gap != null ? signed(r.gap) : r.target != null && !hedge.enabled ? signed(r.target) : '—'}
+          <div key={r.underlying}>
+            {hedge.enabled && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'baseline', gap: '4px 10px', marginBottom: 16 }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontFamily: t.SANS, fontSize: 15, fontWeight: 500, color: tone }}>
+                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: tone }} />{sum.text}
+                </span>
+                {r.band != null && (
+                  <span style={{ fontFamily: t.SANS, fontSize: 13, color: t.DIM }}>
+                    re-hedges when the gap passes <span className="tabular-nums" style={{ fontFamily: t.MONO, color: t.GRAY }}>{`±${r.band.toFixed(4)} ${r.underlying}${r.venueMid != null ? ` (≈ ${fmtUsd(r.band * r.venueMid, 0)})` : ''}`}</span>
+                  </span>
+                )}
+              </div>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 16 }}>
+              <Kpi label={`Target ${r.underlying}`} value={r.target != null ? signed(r.target) : '—'} sub="offsets the vault" />
+              <Kpi label="Held on the venue" value={r.position != null ? signed(r.position) : '—'} sub={hedge.enabled ? undefined : 'no hedger running'} />
+              <Kpi label="Unhedged" value={r.gap != null ? signed(r.gap) : r.target != null && !hedge.enabled ? signed(r.target) : '—'}
                 sub={r.venueMid != null && r.gap != null ? `≈ ${fmtUsd(Math.abs(r.gap) * r.venueMid, 0)}` : undefined}
                 color={sum.tone === 'warn' ? t.ORANGE : t.WHITE} />
             </div>
-            {hedge.enabled && (
-              <div style={{ marginTop: 8 }}>
-                <Row label="Status" value={sum.text} color={sum.tone === 'warn' ? t.ORANGE : t.GREEN} />
-                {r.band != null && (
-                  <Row label="Re-hedges when the gap passes"
-                    value={`±${r.band.toFixed(4)} ${r.underlying}${r.venueMid != null ? ` (≈ ${fmtUsd(r.band * r.venueMid, 0)})` : ''}`} />
-                )}
-                {r.venueMid != null && <Row label="Venue price" value={`${fmtUsd(r.venueMid)}${r.basisBps != null ? ` (${signed(r.basisBps, 0)} bps vs contract spot)` : ''}`} />}
-                {r.unrealizedPnl != null && <Row label="Hedge P&L, unrealized" value={signedUsd(r.unrealizedPnl)} />}
-              </div>
-            )}
           </div>
         );
       })}
 
+      {hedge.error && <div style={{ marginTop: 14 }}><Note tone="warn">The hedger's last pass failed, so it sent no order: {hedge.error}</Note></div>}
+      {!hedge.error && stale && <div style={{ marginTop: 14 }}><Note tone="warn">The hedger has not reported for over a minute. The position shown may be out of date.</Note></div>}
+
       {hedge.enabled && (
-        <div>
-          {hedge.accountValue != null && <Row label="Collateral on the venue" value={fmtUsd(hedge.accountValue)} />}
+        <Details summary="Venue and account">
+          {hedge.rows.map(r => (
+            <div key={r.underlying}>
+              {r.venueMid != null && <Line label={`${r.underlying} on the venue`} value={`${fmtUsd(r.venueMid)}${r.basisBps != null ? ` (${signed(r.basisBps, 0)} bps vs contract spot)` : ''}`} />}
+              {r.unrealizedPnl != null && <Line label="Hedge P&L, unrealized" value={signedUsd(r.unrealizedPnl)} />}
+            </div>
+          ))}
+          {hedge.accountValue != null && <Line label="Collateral on the venue" value={fmtUsd(hedge.accountValue)} />}
           {hedge.account && (
-            <Row label="Exchange account" value={link
+            <Line label="Exchange account" value={link
               ? <a href={link} target="_blank" rel="noopener noreferrer" style={{ color: t.ACCENT }}>{`${hedge.account.slice(0, 8)}…${hedge.account.slice(-6)}`}</a>
               : hedge.account} />
           )}
-        </div>
+        </Details>
       )}
-      {hedge.error && <div style={{ marginTop: 10 }}><Note tone="warn">The hedger's last pass failed, so it sent no order: {hedge.error}</Note></div>}
-      {!hedge.error && stale && <div style={{ marginTop: 10 }}><Note tone="warn">The hedger has not reported for over a minute. The position shown may be out of date.</Note></div>}
 
-      {hedge.orders.length > 0 && <Orders orders={hedge.orders.slice(0, 8)} />}
+      {hedge.orders.length > 0 && (
+        <Details summary={`Recent hedge orders (${Math.min(hedge.orders.length, 8)})`}>
+          <Orders orders={hedge.orders.slice(0, 8)} />
+        </Details>
+      )}
 
     </Panel>
   );
@@ -100,11 +113,10 @@ export function HedgeView({ hedge, now }: { hedge: HedgeStatus | null; now: numb
 
 function Orders({ orders }: { orders: HedgeOrder[] }) {
   const { t } = useTheme();
-  const cell = (align: 'left' | 'right', color = t.GRAY) => ({ fontFamily: t.MONO, fontSize: 11, padding: '5px 6px', textAlign: align, color } as const);
+  const cell = (align: 'left' | 'right', color = t.GRAY) => ({ fontFamily: t.MONO, fontSize: 12, padding: '7px 6px', textAlign: align, color } as const);
   const statusColor = (o: HedgeOrder) => (o.status === 'filled' ? t.GREEN : o.status === 'rejected' ? t.RED : t.ORANGE);
   return (
-    <div style={{ marginTop: 12, overflowX: 'auto' }}>
-      <div style={{ fontFamily: t.MONO, fontSize: 9, letterSpacing: '0.14em', color: t.DIM, marginBottom: 4 }}>RECENT HEDGE ORDERS</div>
+    <div style={{ overflowX: 'auto' }}>
       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
         <tbody>
           {orders.map((o, i) => (

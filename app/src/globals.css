@@ -98,3 +98,8 @@ button:focus-visible, input:focus-visible {
   .desk-chart { height: 260px; }
   .splitter { display: none !important; }
 }
+
+/* Collapsible detail sections (ui.tsx Details). */
+.ui-details > summary::-webkit-details-marker { display: none; }
+.ui-details[open] .ui-details-caret { transform: rotate(90deg); }
+.ui-details > summary:hover { color: var(--text); }

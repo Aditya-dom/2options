@@ -149,3 +149,39 @@ export function Empty({ children }: { children: ReactNode }) {
   const { t } = useTheme();
   return <div style={{ fontFamily: t.MONO, fontSize: 11, color: t.DIM, padding: '18px 0', textAlign: 'center' }}>{children}</div>;
 }
+
+/** A headline number: a small normal-case label over a large monospaced value. */
+export function Kpi({ label, value, sub, color, size = 22, text = false }: { label: ReactNode; value: ReactNode; sub?: ReactNode; color?: string; size?: number; text?: boolean }) {
+  const { t } = useTheme();
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontFamily: t.SANS, fontSize: 12.5, color: t.DIM }}>{label}</div>
+      <div className="tabular-nums" style={{ fontFamily: text ? t.SANS : t.MONO, fontSize: size, fontWeight: 500, letterSpacing: text ? '-0.03em' : '-0.02em', color: color ?? t.WHITE, marginTop: 4, overflowWrap: 'anywhere' }}>{value}</div>
+      {sub != null && <div style={{ fontFamily: t.SANS, fontSize: 12, color: t.DIM, marginTop: 3 }}>{sub}</div>}
+    </div>
+  );
+}
+
+/** Secondary detail, collapsed until asked for. Its text stays in the page (and in tests). */
+export function Details({ summary, children }: { summary: ReactNode; children: ReactNode }) {
+  const { t } = useTheme();
+  return (
+    <details className="ui-details" style={{ borderTop: `1px solid ${t.BORDER}`, marginTop: 14 }}>
+      <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', alignItems: 'center', gap: 6, padding: '12px 0 2px', fontFamily: t.SANS, fontSize: 13, color: t.GRAY }}>
+        <span className="ui-details-caret" style={{ display: 'inline-block', transition: 'transform .15s', fontSize: 10 }}>▸</span>{summary}
+      </summary>
+      <div style={{ paddingTop: 8 }}>{children}</div>
+    </details>
+  );
+}
+
+/** A label and value on one line, in the calm style (sans label, mono value). */
+export function Line({ label, value, color }: { label: ReactNode; value: ReactNode; color?: string }) {
+  const { t } = useTheme();
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, padding: '5px 0', minWidth: 0 }}>
+      <span style={{ fontFamily: t.SANS, fontSize: 13.5, color: t.GRAY, flexShrink: 0 }}>{label}</span>
+      <span className="tabular-nums" style={{ fontFamily: t.MONO, fontSize: 13, color: color ?? t.WHITE, textAlign: 'right', minWidth: 0, overflowWrap: 'anywhere' }}>{value}</span>
+    </div>
+  );
+}
