@@ -566,7 +566,7 @@ def test_asking_again_for_an_account_that_does_not_exist_costs_no_more_chain_rea
     assert reads == ["nobody.testnet"]
     # Once it deposits, it is found again when the memory of the miss has run out.
     chain.accounts["nobody.testnet"] = dict(chain.accounts["alice.testnet"])
-    app._no_account.clear()
+    app._read.clear()
     assert app.handle("/quote", {**QUOTE, "taker": "nobody.testnet"})[0] == 200
     assert "nobody.testnet" in app.store.takers()
 
@@ -601,3 +601,42 @@ def test_a_malformed_request_is_refused_before_the_account_is_read(app: App) -> 
         400,
         404,
     )
+
+
+def test_an_account_that_has_emptied_and_gone_is_refused_once_it_is_read_again(
+    app: App, chain: FakeChain, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The contract removes an account when its last balance is withdrawn. The agent must not
+    go on quoting for it because it once saw it."""
+    now = {"t": 1_000.0}
+    monkeypatch.setattr(server_module.time, "monotonic", lambda: now["t"])
+    reads: list[str] = []
+    view = app.cache.view
+
+    def counting(method: str, args: dict | None = None):  # type: ignore[no-untyped-def]
+        if method == "get_account":
+            reads.append(args["account_id"])  # type: ignore[index]
+        return view(method, args)
+
+    app.cache.view = counting
+    ask = lambda: app.handle("/quote", QUOTE)[0]  # noqa: E731
+    assert [ask(), ask(), ask()] == [200, 200, 200]
+    assert reads == ["alice.testnet"]  # read once, then believed for a while
+    assert app.store.takers() == ["alice.testnet"]
+
+    del chain.accounts["alice.testnet"]  # withdrew everything: gone from the contract
+    now["t"] += 10.0
+    assert ask() == 200  # still inside what the agent remembers
+    now["t"] += 25.0
+    assert ask() == 409  # read again, found gone
+    assert app.store.takers() == []  # and off the watch list
+    assert ask() == 409 and len(reads) == 2  # the miss is remembered too
+
+    chain.accounts["alice.testnet"] = {
+        "collateral": "5000000",
+        "positions": [],
+        "equity": "5000000",
+        "requirement": "0",
+    }
+    now["t"] += 31.0
+    assert ask() == 200  # it deposits again and is quoted again
