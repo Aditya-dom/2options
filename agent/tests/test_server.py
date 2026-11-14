@@ -113,6 +113,44 @@ def test_inventory_reports_the_hedge_for_the_vault_short(app: App, chain: FakeCh
     assert 1.5 < inv["hedge_target"]["ETH"] < 3.0  # about 4 x 0.55 ETH long
 
 
+def test_the_hedge_delta_is_the_quoted_delta_for_every_strike(app: App, chain: FakeChain) -> None:
+    chain.add_series("ETH-2300-C", "ETH-1900-P")  # away from the money, where the smile matters
+    for sid in chain.series:
+        chain.series[sid]["net_trader_size"] = str(1_000_000)
+    quoted = {r["series"]: r["delta"] for r in app.handle("/chain", {})[1]}
+    inv = app.handle("/inventory", {})[1]
+    assert len(inv["exposures"]) == 4
+    for e in inv["exposures"]:
+        assert e["delta_per_contract"] == pytest.approx(quoted[e["series"]], abs=1e-6)
+
+
+def test_hedge_without_a_hedger_says_so_and_shows_the_target(app: App, chain: FakeChain) -> None:
+    chain.series["ETH-2100-C"]["net_trader_size"] = str(4_000_000)
+    status, body = app.handle("/hedge", {})
+    inv = app.handle("/inventory", {})[1]
+    assert status == 200 and body["enabled"] is False and body["orders"] == []
+    assert body["underlyings"] == {"ETH": {"target": round(inv["hedge_target"]["ETH"], 6)}}
+    assert app.handle("/health", {})[1]["hedger"] is False
+
+
+def test_hedge_reports_the_running_hedger(app: App, chain: FakeChain) -> None:
+    from twooptions_agent.hedger import Hedger
+
+    from .test_hedger import FakeVenue
+
+    chain.series["ETH-2100-C"]["net_trader_size"] = str(4_000_000)
+    venue = FakeVenue(lambda: chain.now_ns)
+    app.hedger = Hedger(venue, app.cache, app.quoter, app.store, clock=lambda: chain.now_ns)
+    app.hedger.tick()
+    status, body = app.handle("/hedge", {})
+    assert status == 200 and body["enabled"] is True and body["venue"] == "hyperliquid"
+    row = body["underlyings"]["ETH"]
+    assert row["position"] == str(venue.position) and abs(row["gap"]) < 1e-4
+    assert len(body["orders"]) == 1 and body["orders"][0]["status"] == "filled"
+    assert app.handle("/health", {})[1]["hedger"] is True
+    json.dumps(body)  # everything in it is JSON
+
+
 def test_rpc_failure_is_a_502_not_a_crash(app: App, chain: FakeChain) -> None:
     def boom(method, args=None):  # type: ignore[no-untyped-def]
         raise OSError("rpc down")
@@ -228,3 +266,67 @@ def near_underlying(name: str):  # type: ignore[no-untyped-def]
     from twooptions_agent.wire import Underlying
 
     return Underlying[name]
+
+
+HL_KEY = "0x0123456789012345678901234567890123456789012345678901234567890123"  # the SDK's test key
+
+
+def test_hedge_config_is_off_without_a_key_and_strict_with_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for k in (
+        "HYPERLIQUID_PRIVATE_KEY",
+        "HYPERLIQUID_ACCOUNT_ADDRESS",
+        "HYPERLIQUID_NETWORK",
+        "HYPERLIQUID_API_URL",
+        "HEDGE_DEADBAND_USD",
+        "HEDGE_MAX_ORDER_USD",
+        "HEDGE_SLIPPAGE_BPS",
+    ):
+        monkeypatch.delenv(k, raising=False)
+    testnet = config.Network("testnet", "https://rpc.example", "twooptions.testnet")
+    assert config.hedge_venue(testnet) is None  # no key: no hedging, and no error
+
+    monkeypatch.setenv("HYPERLIQUID_PRIVATE_KEY", HL_KEY)
+    venue = config.hedge_venue(testnet)
+    assert venue is not None and venue.network == "testnet"
+    assert venue.account == "0x14791697260e4c9a71f18484c9f997b308e59325"  # the key's own address
+
+    monkeypatch.setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0x" + "AB" * 20)  # an API wallet's master
+    assert config.hedge_venue(testnet).account == "0x" + "ab" * 20  # type: ignore[union-attr]
+    monkeypatch.setenv("HYPERLIQUID_ACCOUNT_ADDRESS", "0x1234")
+    with pytest.raises(config.ConfigError, match="HYPERLIQUID_ACCOUNT_ADDRESS"):
+        config.hedge_venue(testnet)
+    monkeypatch.delenv("HYPERLIQUID_ACCOUNT_ADDRESS")
+
+    # Real money against a test book, or the reverse, is refused at start-up.
+    monkeypatch.setenv("HYPERLIQUID_NETWORK", "mainnet")
+    with pytest.raises(config.ConfigError, match="does not match"):
+        config.hedge_venue(testnet)
+    mainnet = config.Network("mainnet", "https://rpc.example", "twooptions.near")
+    assert config.hedge_venue(mainnet).network == "mainnet"  # type: ignore[union-attr]
+    monkeypatch.setenv("HYPERLIQUID_NETWORK", "testnet")
+    with pytest.raises(config.ConfigError, match="does not match"):
+        config.hedge_venue(mainnet)
+    monkeypatch.setenv("HYPERLIQUID_NETWORK", "devnet")
+    with pytest.raises(config.ConfigError, match="HYPERLIQUID_NETWORK"):
+        config.hedge_venue(testnet)
+    monkeypatch.setenv("HYPERLIQUID_NETWORK", "testnet")
+
+    monkeypatch.setenv("HYPERLIQUID_PRIVATE_KEY", "not-a-key")
+    with pytest.raises(config.ConfigError, match="HYPERLIQUID_PRIVATE_KEY"):
+        config.hedge_venue(testnet)
+
+    assert config.hedge_config().deadband_usd == 25.0
+    monkeypatch.setenv("HEDGE_DEADBAND_USD", "40")
+    assert config.hedge_config().deadband_usd == 40.0
+    for name, bad in (
+        ("HEDGE_DEADBAND_USD", "-1"),
+        ("HEDGE_MAX_ORDER_USD", "5"),
+        ("HEDGE_SLIPPAGE_BPS", "0"),
+        ("HEDGE_SLIPPAGE_BPS", "abc"),
+    ):
+        monkeypatch.setenv(name, bad)
+        with pytest.raises(config.ConfigError, match=name):
+            config.hedge_config()
+        monkeypatch.delenv(name)
