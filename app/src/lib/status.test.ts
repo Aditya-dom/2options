@@ -79,6 +79,18 @@ test('what stops trading is an outage; what does not is only degraded', () => {
   expect(quiet.overall).toBe('operational');
 });
 
+test('an unreadable contract is one alarm, not a false report that the price or the funding is missing', () => {
+  // Seen live: a rate-limited RPC (HTTP 429) made every read fail while the system was healthy.
+  const blind = good({ contractError: 'test.rpc.fastnear.com: HTTP 429', spots: {}, series: [], vault: null, params: null });
+  const r = buildStatus(blind, NOW);
+  expect([r.overall, r.headline]).toEqual(['outage', 'Outage: contract']);
+  for (const id of ['spot', 'funding', 'vault'] as const) {
+    expect(r.checks.find(c => c.id === id)).toMatchObject({ level: 'unknown', summary: 'Unknown while the contract cannot be read.' });
+  }
+  // Even with the last good data still in hand, it does not vouch for a price it can no longer read.
+  expect(check(good({ contractError: 'HTTP 429' }), 'spot').level).toBe('unknown');
+});
+
 test('before the first read the page says it is checking, unless something already failed', () => {
   const r = buildStatus(good({ loaded: false, params: null, series: [], spots: {}, vault: null, solvency: null, health: null, hedge: null, quoted: 0, agentKeyRegistered: null }), NOW);
   expect([r.overall, r.headline]).toEqual(['checking', 'Checking…']);

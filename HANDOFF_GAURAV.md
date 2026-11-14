@@ -79,7 +79,7 @@ The rules are one pure function (`app/src/lib/status.ts`) with a test per rule. 
 |---|---|
 | Contract | 84 unit tests. The 2,000-step random run now also asserts that no completed buy leaves negative cash and that only an account with open positions can have a negative balance |
 | Agent | 196 tests, `ruff`, `mypy --strict`. Includes a randomized run of the hedger (random book, price walk, stale spots, venue failures, timeouts, refusals, partial fills) that checks its rules on every pass |
-| App | 78 tests, type-check, build |
+| App | 79 tests, type-check, build |
 | Guards | Each new check was removed in turn to confirm a test fails: 5 in the contract, about 35 in the agent, 16 in the status rules |
 | Live, second deployment | `e2e_testnet.py` 34 of 34; `liquidation_demo.py` 10 of 10; the hedge loop (open, hold through noise, flatten); `hedge_smoke.py --trade` 8 of 8; the status page in a browser, operational and in an outage |
 

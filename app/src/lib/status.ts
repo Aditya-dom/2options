@@ -51,6 +51,9 @@ export interface StatusInput {
   hedge: HedgeStatus | null;
 }
 
+/** What the checks that depend on contract reads say when the contract cannot be read at all. */
+const BLIND = 'Unknown while the contract cannot be read.';
+
 /** The keeper settles one series per pass, a few seconds each, starting 15 s into the interval. */
 const FUNDING_GRACE_MS = 5 * 60_000;
 const HEDGE_STALE_MS = 60_000;
@@ -67,6 +70,8 @@ function contract(i: StatusInput): Check {
 
 function spot(i: StatusInput, nowMs: number): Check {
   const base = { id: 'spot' as const, label: 'Price feed', critical: true };
+  // One cause, one alarm: an unreadable contract is not evidence that the price is missing.
+  if (i.contractError) return { ...base, level: 'unknown', summary: BLIND };
   if (!i.params || !i.loaded) return { ...base, level: 'unknown', summary: 'Waiting for the contract…' };
   const wanted = [...new Set(i.series.map(s => s.underlying))].sort();
   if (wanted.length === 0) return { ...base, level: 'off', summary: 'No series are listed, so no price is needed.' };
@@ -89,6 +94,7 @@ function spot(i: StatusInput, nowMs: number): Check {
 
 function funding(i: StatusInput, nowMs: number): Check {
   const base = { id: 'funding' as const, label: 'Funding settlement', critical: false };
+  if (i.contractError) return { ...base, level: 'unknown', summary: BLIND };
   if (!i.params || !i.loaded) return { ...base, level: 'unknown', summary: 'Waiting for the contract…' };
   const active = i.series.filter(s => s.active);
   if (active.length === 0) return { ...base, level: 'off', summary: 'No active series.' };
@@ -118,6 +124,7 @@ function funding(i: StatusInput, nowMs: number): Check {
 function vault(i: StatusInput): Check {
   const base = { id: 'vault' as const, label: 'LP vault', critical: false };
   const v = i.vault;
+  if (i.contractError) return { ...base, level: 'unknown', summary: BLIND };
   if (!v || !i.params) return { ...base, level: 'unknown', summary: 'Waiting for the contract…' };
   if (v.cash + v.insurance < 0n) return { ...base, level: 'down', summary: 'Vault cash plus insurance is negative, so withdrawals and LP claims are halted until it is recapitalised.' };
   if (v.totalShares === 0n) return { ...base, level: 'warn', summary: 'No LP liquidity yet: the vault cannot be the counterparty to a trade.' };

@@ -24,7 +24,12 @@ const env = process.env;
 const contract = env.VITE_CONTRACT_ID ?? '';
 const agentUrl = (env.VITE_AGENT_URL ?? '').replace(/\/+$/, '');
 const network = env.VITE_NEAR_NETWORK === 'mainnet' ? 'mainnet' : 'testnet';
-const rpc = [env.VITE_NEAR_RPC_URL || (network === 'mainnet' ? 'https://free.rpc.fastnear.com' : 'https://test.rpc.fastnear.com')];
+// The app's own list (src/lib/config.ts): the configured endpoint, then a second provider. Public
+// endpoints rate-limit, and one of them refusing a read is not an outage.
+const rpc = [...new Set([
+  env.VITE_NEAR_RPC_URL || (network === 'mainnet' ? 'https://free.rpc.fastnear.com' : 'https://test.rpc.fastnear.com'),
+  network === 'mainnet' ? 'https://near.drpc.org' : 'https://near-testnet.drpc.org',
+])];
 if (!contract) { console.error('VITE_CONTRACT_ID is not set'); process.exit(2); }
 
 const view = <T>(method: string, args: object = {}) => viewCall<T>(rpc, contract, method, args);
